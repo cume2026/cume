@@ -34,6 +34,8 @@
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
 </script>
+<!-- v21: tesseract.js para OCR local de prints/imagens do sistema do hospital -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
@@ -1322,6 +1324,7 @@ input[type="file"]{display:none}
   <div class="med-tabs">
     <div class="med-tab act" onclick="swMedTab('registro',this)">📋 Registrar</div>
     <div class="med-tab" onclick="swMedTab('producao',this)">📊 Minha Produção</div>
+    <div class="med-tab" onclick="swMedTab('consultar',this)">📷 Importar Print</div>
     <div class="med-tab" onclick="swMedTab('chat',this)">💬 Mensagens <span id="medChatBadge"></span></div>
   </div>
 
@@ -1406,26 +1409,30 @@ input[type="file"]{display:none}
 
       <div id="equipeSection" style="background:rgba(59,130,246,.04);border:1px dashed rgba(59,130,246,.2);border-radius:10px;padding:14px;margin-top:4px">
         <div style="font-size:10px;font-weight:700;color:#6b84a4;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">
-          👥 Outros Participantes da Equipe <span style="color:#6b84a4;font-weight:400;text-transform:none;letter-spacing:.3px;font-size:10px;margin-left:6px">(opcional — serão criados registros separados para cada um)</span>
+          👥 Outros Participantes da Equipe <span style="color:#6b84a4;font-weight:400;text-transform:none;letter-spacing:.3px;font-size:10px;margin-left:6px">(opcional — médicos cadastrados geram registros separados; "Outro" é anotado na observação)</span>
         </div>
         <div class="row-2">
           <div class="field" style="margin-bottom:10px">
             <label>💉 Anestesista</label>
-            <select id="fEqAnestesista"><option value="">— nenhum —</option></select>
+            <select id="fEqAnestesista" onchange="toggleOutroEquipe('fEqAnestesista','fEqAnestesistaOutro')"><option value="">— nenhum —</option></select>
+            <input type="text" id="fEqAnestesistaOutro" placeholder="Nome do anestesista (externo)" style="display:none;margin-top:6px;width:100%;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:8px;color:#e8f4ff;font-size:12px;outline:none" oninput="this.value = this.value.toUpperCase()">
           </div>
           <div class="field" style="margin-bottom:10px">
             <label>👨‍⚕️ Cirurgião (se você é auxiliar/anestesista)</label>
-            <select id="fEqCirurgiao"><option value="">— nenhum —</option></select>
+            <select id="fEqCirurgiao" onchange="toggleOutroEquipe('fEqCirurgiao','fEqCirurgiaoOutro')"><option value="">— nenhum —</option></select>
+            <input type="text" id="fEqCirurgiaoOutro" placeholder="Nome do cirurgião (externo)" style="display:none;margin-top:6px;width:100%;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:8px;color:#e8f4ff;font-size:12px;outline:none" oninput="this.value = this.value.toUpperCase()">
           </div>
         </div>
         <div class="row-2">
           <div class="field" style="margin-bottom:0">
             <label>🤝 1º Auxiliar</label>
-            <select id="fEqAux1"><option value="">— nenhum —</option></select>
+            <select id="fEqAux1" onchange="toggleOutroEquipe('fEqAux1','fEqAux1Outro')"><option value="">— nenhum —</option></select>
+            <input type="text" id="fEqAux1Outro" placeholder="Nome do 1º auxiliar (externo)" style="display:none;margin-top:6px;width:100%;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:8px;color:#e8f4ff;font-size:12px;outline:none" oninput="this.value = this.value.toUpperCase()">
           </div>
           <div class="field" style="margin-bottom:0">
             <label>🤝 2º Auxiliar</label>
-            <select id="fEqAux2"><option value="">— nenhum —</option></select>
+            <select id="fEqAux2" onchange="toggleOutroEquipe('fEqAux2','fEqAux2Outro')"><option value="">— nenhum —</option></select>
+            <input type="text" id="fEqAux2Outro" placeholder="Nome do 2º auxiliar (externo)" style="display:none;margin-top:6px;width:100%;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:8px;color:#e8f4ff;font-size:12px;outline:none" oninput="this.value = this.value.toUpperCase()">
           </div>
         </div>
       </div>
@@ -1523,6 +1530,173 @@ input[type="file"]{display:none}
     </div>
   </div><!-- /mtp-producao -->
 
+  <!-- v21: ABA CONSULTAR PRINT DO HOSPITAL -->
+  <div class="med-tab-panel" id="mtp-consultar" style="padding:20px 16px;padding-bottom:60px">
+
+    <div style="margin-bottom:18px">
+      <h2 style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--white);font-weight:400;margin-bottom:4px">📷 Importar Print do Hospital</h2>
+      <p style="font-size:12px;color:var(--muted);line-height:1.5">
+        Tirou print do sistema do hospital? Solta a imagem aqui (ou PDF). A IA lê o print, identifica
+        paciente, data, procedimento, convênio e valor, e monta um registro pré-preenchido pra você conferir.
+        <strong style="color:#93c5fd">Depois de revisar, o registro cai direto como sua produção.</strong>
+      </p>
+    </div>
+
+    <!-- Drop zone -->
+    <div id="consultaDropZone"
+      style="border:2px dashed rgba(99,179,237,.25);border-radius:14px;padding:28px;text-align:center;background:rgba(15,24,44,.4);cursor:pointer;transition:all .2s"
+      onclick="document.getElementById('consultaFileInput').click()">
+      <div style="font-size:40px;margin-bottom:8px">📸</div>
+      <strong style="color:#e8f4ff;font-size:14px;display:block;margin-bottom:4px">Clique aqui ou arraste a imagem / PDF</strong>
+      <div style="font-size:11px;color:var(--muted)">Aceita PNG, JPG, WEBP ou PDF · tudo processado no seu navegador</div>
+      <input type="file" id="consultaFileInput" accept="image/*,application/pdf" style="display:none" onchange="consultaProcessarArquivo(event)">
+    </div>
+
+    <!-- Preview da imagem -->
+    <div id="consultaPreview" style="display:none;margin-top:16px;background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px">
+      <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+        <img id="consultaPreviewImg" style="max-width:220px;max-height:220px;border-radius:10px;border:1px solid rgba(99,179,237,.15);flex-shrink:0;object-fit:contain;background:#000">
+        <div style="flex:1;min-width:200px">
+          <div id="consultaNomeArquivo" style="font-size:13px;font-weight:700;color:#e8f4ff;margin-bottom:6px;word-break:break-all"></div>
+          <div id="consultaInfoArquivo" style="font-size:11px;color:var(--muted);margin-bottom:10px"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onclick="consultaExtrairTexto()" id="consultaBtnExtrair" class="pbtn pbtn-a" style="padding:8px 18px;font-size:12px">🔍 Extrair texto</button>
+            <button onclick="consultaLimpar()" class="pbtn" style="padding:8px 18px;font-size:12px;color:var(--muted)">✕ Limpar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progresso OCR -->
+    <div id="consultaProgresso" style="display:none;margin-top:14px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:12px 14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-size:18px;animation:pulse 1.4s ease-in-out infinite">⏳</span>
+        <strong id="consultaProgressoTxt" style="font-size:13px;color:#93c5fd">Carregando OCR…</strong>
+      </div>
+      <div style="background:rgba(99,179,237,.12);border-radius:6px;height:6px;overflow:hidden">
+        <div id="consultaProgressoBar" style="background:linear-gradient(90deg,#3b82f6,#60a5fa);height:100%;width:0%;transition:width .3s"></div>
+      </div>
+    </div>
+
+    <!-- Resultado OCR + formulário pré-preenchido -->
+    <div id="consultaResultado" style="display:none;margin-top:16px">
+
+      <!-- Formulário pré-preenchido (principal) -->
+      <div style="background:linear-gradient(180deg,rgba(59,130,246,.08),rgba(15,24,44,.4));border:1px solid rgba(59,130,246,.25);border-radius:14px;padding:18px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <span style="font-size:24px">🎯</span>
+          <div style="flex:1;min-width:220px">
+            <strong style="font-family:'DM Serif Display',serif;font-size:18px;color:#e8f4ff;font-weight:400;display:block">Registro identificado</strong>
+            <span style="font-size:11px;color:var(--muted)">Revise os campos e clique em registrar. A IA acerta a maioria, mas confere sempre.</span>
+          </div>
+          <span id="impConfianca" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:6px;letter-spacing:.5px"></span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
+          <div>
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Data *</label>
+            <input type="date" id="impData"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Hospital *</label>
+            <select id="impHospital"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
+              <option value="">—</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Paciente *</label>
+          <input type="text" id="impPaciente" placeholder="Nome do paciente"
+            style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none;text-transform:uppercase"
+            oninput="this.value=this.value.toUpperCase()">
+          <div id="impPacienteCandidatos" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Procedimento *</label>
+          <input type="text" id="impProcedimento" placeholder="Ex: Cesariana, Colecistectomia..."
+            style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none"
+            oninput="autoCodigos('impProcedimento','impSigtap','impTuss')">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
+          <div>
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">SIGTAP</label>
+            <input type="text" id="impSigtap" inputmode="numeric" maxlength="10" placeholder="10 dígitos"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Mono','Courier New',monospace;font-size:13px;padding:10px 14px;outline:none;letter-spacing:.5px"
+              oninput="this.value=this.value.replace(/\D/g,'')">
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">TUSS</label>
+            <input type="text" id="impTuss" inputmode="numeric" maxlength="20"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Mono','Courier New',monospace;font-size:13px;padding:10px 14px;outline:none;letter-spacing:.5px"
+              oninput="this.value=this.value.replace(/\D/g,'')">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
+          <div>
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Convênio *</label>
+            <input type="text" id="impConvenio" placeholder="Ex: UNIMED, BRADESCO..."
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none;text-transform:uppercase"
+              oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Valor estimado</label>
+            <input type="number" id="impValor" step="0.01" placeholder="0,00"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Sua participação *</label>
+          <select id="impParticipacao"
+            style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
+            <option value="CIRURGIÃO">👨‍⚕️ Cirurgião</option>
+            <option value="ANESTESISTA">💉 Anestesista</option>
+            <option value="1º AUXILIAR">🤝 1º Auxiliar</option>
+            <option value="2º AUXILIAR">🤝 2º Auxiliar</option>
+          </select>
+        </div>
+        <div style="margin-bottom:14px">
+          <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Observação</label>
+          <input type="text" id="impObs"
+            style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:12px;padding:9px 12px;outline:none">
+        </div>
+
+        <div id="impDuplicata" style="display:none;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:#fbbf24">
+          ⚠️ <strong>Atenção:</strong> <span id="impDuplicataTxt"></span>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button onclick="importarComoRegistro()" class="btn-submit" style="flex:1;min-width:200px">➤ Registrar como produção</button>
+          <button onclick="consultaLimpar()" class="pbtn" style="padding:12px 22px;font-size:12px;color:var(--muted)">✕ Cancelar</button>
+        </div>
+
+        <div id="impFeedback" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600"></div>
+      </div>
+
+      <!-- Matches com registros próprios (contexto) -->
+      <div id="consultaMatches" style="display:none;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.2);border-radius:12px;padding:14px;margin-bottom:12px">
+        <strong style="font-size:11px;color:#4ade80;text-transform:uppercase;letter-spacing:1px;font-weight:700">✅ Bate com seus registros</strong>
+        <div id="consultaMatchesList" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+
+      <!-- Texto extraído (colapsável — referência) -->
+      <details style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:10px 14px">
+        <summary style="cursor:pointer;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;padding:4px 0">📝 Ver texto bruto extraído do print</summary>
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:8px 0">
+          <button onclick="consultaCopiarTexto()" class="pbtn" style="padding:4px 10px;font-size:10px">📋 Copiar</button>
+          <button onclick="consultaReinterpretar()" class="pbtn" style="padding:4px 10px;font-size:10px;color:#93c5fd">🔄 Reinterpretar</button>
+        </div>
+        <!-- Análise dos padrões detectados (pra debug/transparência) -->
+        <div id="consultaAnalise" style="font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:8px"></div>
+        <textarea id="consultaTexto" rows="8"
+          style="width:100%;background:rgba(15,24,44,.6);border:1px solid rgba(99,179,237,.1);border-radius:8px;color:#e8f4ff;font-family:'DM Mono','Courier New',monospace;font-size:11px;padding:10px 12px;outline:none;resize:vertical;line-height:1.6"
+          oninput="consultaReinterpretar()"></textarea>
+      </details>
+    </div>
+
+  </div><!-- /mtp-consultar -->
+
   <!-- ABA CHAT MÉDICO -->
   <div class="med-tab-panel" id="mtp-chat" style="height:calc(100vh - 132px)">
     <div class="chat-wrap-light">
@@ -1574,12 +1748,192 @@ input[type="file"]{display:none}
     <div class="kpi"><div class="kv kv-red" id="kpiAlerta">—</div><div class="kl">⛔ Críticos</div></div>
   </div>
   <div class="tabs">
+    <div class="tab" onclick="swTab('central',this)">🎯 Central <span id="centralBadge"></span></div>
     <div class="tab act" onclick="swTab('registros',this)">📋 Registros</div>
     <div class="tab" onclick="swTab('alertas',this)">⚠️ Alertas <span id="alertCount"></span></div>
     <div class="tab" onclick="swTab('graficos',this)">📊 Gráficos</div>
+    <div class="tab" onclick="swTab('importar',this)">📷 Importar Print</div>
     <div class="tab" onclick="swTab('chat',this)">💬 Mensagens <span id="confChatBadge"></span></div>
     <div class="tab" onclick="swTab('medicos',this)">👥 Médicos</div>
     <div class="tab" onclick="swTab('procedimentos',this)">🔬 Procedimentos</div>
+  </div>
+
+  <!-- v20: TAB CENTRAL DE CONFERÊNCIA -->
+  <div class="tab-panel" id="tp-central" style="overflow-y:auto">
+    <div style="padding:20px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2 style="font-family:'DM Serif Display',serif;font-size:24px;color:var(--white);font-weight:400;margin-bottom:4px">🎯 Central de Conferência</h2>
+          <p style="font-size:12px;color:var(--muted)">Sua fila priorizada — o que precisa da sua atenção agora.</p>
+        </div>
+        <button onclick="renderCentral()" class="pbtn" style="padding:8px 16px;font-size:11px">🔄 Atualizar</button>
+      </div>
+      <div id="centralConteudo">
+        <div style="color:var(--muted);font-size:12px;text-align:center;padding:28px">Carregando...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v21: TAB IMPORTAR PRINT (admin/conf) -->
+  <div class="tab-panel" id="tp-importar" style="overflow-y:auto">
+    <div style="padding:20px 16px;padding-bottom:60px">
+      <div style="margin-bottom:18px">
+        <h2 style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--white);font-weight:400;margin-bottom:4px">📷 Importar Print para um Médico</h2>
+        <p style="font-size:12px;color:var(--muted);line-height:1.5">
+          Médico te mandou print do sistema do hospital pelo WhatsApp? Solta aqui, escolhe pra qual médico
+          é o registro, revisa e registra — cai direto na produção dele. <strong style="color:#93c5fd">O OCR roda no seu
+          navegador; nada sobe pra lugar nenhum.</strong>
+        </p>
+      </div>
+
+      <!-- Seletor de médico (obrigatório antes de importar) -->
+      <div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:12px;padding:14px;margin-bottom:14px">
+        <label style="font-size:11px;color:#93c5fd;font-weight:700;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:6px">👤 Médico responsável pelo registro *</label>
+        <select id="cImpMedico"
+          style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
+          <option value="">— selecione o médico —</option>
+        </select>
+      </div>
+
+      <!-- Drop zone -->
+      <div id="cImpDropZone"
+        style="border:2px dashed rgba(99,179,237,.25);border-radius:14px;padding:28px;text-align:center;background:rgba(15,24,44,.4);cursor:pointer;transition:all .2s"
+        onclick="document.getElementById('cImpFileInput').click()">
+        <div style="font-size:40px;margin-bottom:8px">📸</div>
+        <strong style="color:#e8f4ff;font-size:14px;display:block;margin-bottom:4px">Clique aqui ou arraste a imagem / PDF</strong>
+        <div style="font-size:11px;color:var(--muted)">Aceita PNG, JPG, WEBP ou PDF · processado no seu navegador</div>
+        <input type="file" id="cImpFileInput" accept="image/*,application/pdf" style="display:none" onchange="cImpProcessarArquivo(event)">
+      </div>
+
+      <div id="cImpPreview" style="display:none;margin-top:16px;background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px">
+        <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+          <img id="cImpPreviewImg" style="max-width:220px;max-height:220px;border-radius:10px;border:1px solid rgba(99,179,237,.15);flex-shrink:0;object-fit:contain;background:#000">
+          <div style="flex:1;min-width:200px">
+            <div id="cImpNomeArquivo" style="font-size:13px;font-weight:700;color:#e8f4ff;margin-bottom:6px;word-break:break-all"></div>
+            <div id="cImpInfoArquivo" style="font-size:11px;color:var(--muted);margin-bottom:10px"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onclick="cImpExtrair()" id="cImpBtnExtrair" class="pbtn pbtn-a" style="padding:8px 18px;font-size:12px">🔍 Extrair texto</button>
+              <button onclick="cImpLimpar()" class="pbtn" style="padding:8px 18px;font-size:12px;color:var(--muted)">✕ Limpar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="cImpProgresso" style="display:none;margin-top:14px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <span style="font-size:18px;animation:pulse 1.4s ease-in-out infinite">⏳</span>
+          <strong id="cImpProgressoTxt" style="font-size:13px;color:#93c5fd">Carregando OCR…</strong>
+        </div>
+        <div style="background:rgba(99,179,237,.12);border-radius:6px;height:6px;overflow:hidden">
+          <div id="cImpProgressoBar" style="background:linear-gradient(90deg,#3b82f6,#60a5fa);height:100%;width:0%;transition:width .3s"></div>
+        </div>
+      </div>
+
+      <!-- Formulário preenchido -->
+      <div id="cImpResultado" style="display:none;margin-top:16px">
+        <div style="background:linear-gradient(180deg,rgba(59,130,246,.08),rgba(15,24,44,.4));border:1px solid rgba(59,130,246,.25);border-radius:14px;padding:18px;margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+            <span style="font-size:24px">🎯</span>
+            <div style="flex:1;min-width:220px">
+              <strong style="font-family:'DM Serif Display',serif;font-size:18px;color:#e8f4ff;font-weight:400;display:block">Registro identificado</strong>
+              <span style="font-size:11px;color:var(--muted)">Revise antes de registrar. O médico selecionado acima receberá na produção dele.</span>
+            </div>
+            <span id="cImpConfianca" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:6px;letter-spacing:.5px"></span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
+            <div>
+              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Data *</label>
+              <input type="date" id="cImpData"
+                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Hospital *</label>
+              <select id="cImpHospital"
+                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
+                <option value="">—</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Paciente *</label>
+            <input type="text" id="cImpPaciente" placeholder="Nome do paciente"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none;text-transform:uppercase"
+              oninput="this.value=this.value.toUpperCase()">
+            <div id="cImpPacienteCandidatos" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Procedimento *</label>
+            <input type="text" id="cImpProcedimento" placeholder="Ex: Cesariana, Colecistectomia..."
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none"
+              oninput="autoCodigos('cImpProcedimento','cImpSigtap','cImpTuss')">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
+            <div>
+              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">SIGTAP</label>
+              <input type="text" id="cImpSigtap" inputmode="numeric" maxlength="10" placeholder="10 dígitos"
+                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Mono','Courier New',monospace;font-size:13px;padding:10px 14px;outline:none;letter-spacing:.5px"
+                oninput="this.value=this.value.replace(/\D/g,'')">
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">TUSS</label>
+              <input type="text" id="cImpTuss" inputmode="numeric" maxlength="20"
+                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Mono','Courier New',monospace;font-size:13px;padding:10px 14px;outline:none;letter-spacing:.5px"
+                oninput="this.value=this.value.replace(/\D/g,'')">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
+            <div>
+              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Convênio *</label>
+              <input type="text" id="cImpConvenio" placeholder="Ex: UNIMED, BRADESCO..."
+                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none;text-transform:uppercase"
+                oninput="this.value=this.value.toUpperCase()">
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Valor estimado</label>
+              <input type="number" id="cImpValor" step="0.01" placeholder="0,00"
+                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
+            </div>
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Participação do médico *</label>
+            <select id="cImpParticipacao"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
+              <option value="CIRURGIÃO">👨‍⚕️ Cirurgião</option>
+              <option value="ANESTESISTA">💉 Anestesista</option>
+              <option value="1º AUXILIAR">🤝 1º Auxiliar</option>
+              <option value="2º AUXILIAR">🤝 2º Auxiliar</option>
+            </select>
+          </div>
+          <div style="margin-bottom:14px">
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Observação</label>
+            <input type="text" id="cImpObs"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:12px;padding:9px 12px;outline:none">
+          </div>
+
+          <div id="cImpDuplicata" style="display:none;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:#fbbf24">
+            ⚠️ <strong>Atenção:</strong> <span id="cImpDuplicataTxt"></span>
+          </div>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button onclick="cImpImportar()" class="btn-submit" style="flex:1;min-width:220px">➤ Registrar para o médico selecionado</button>
+            <button onclick="cImpLimpar()" class="pbtn" style="padding:12px 22px;font-size:12px;color:var(--muted)">✕ Cancelar</button>
+          </div>
+          <div id="cImpFeedback" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600"></div>
+        </div>
+
+        <details style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:10px 14px">
+          <summary style="cursor:pointer;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;padding:4px 0">📝 Ver texto bruto extraído do print</summary>
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:8px 0">
+            <button onclick="cImpReinterpretar()" class="pbtn" style="padding:4px 10px;font-size:10px;color:#93c5fd">🔄 Reinterpretar</button>
+          </div>
+          <div id="cImpAnalise" style="font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:8px"></div>
+          <textarea id="cImpTexto" rows="8"
+            style="width:100%;background:rgba(15,24,44,.6);border:1px solid rgba(99,179,237,.1);border-radius:8px;color:#e8f4ff;font-family:'DM Mono','Courier New',monospace;font-size:11px;padding:10px 12px;outline:none;resize:vertical;line-height:1.6"
+            oninput="cImpReinterpretar()"></textarea>
+        </details>
+      </div>
+    </div>
   </div>
 
   <!-- TAB REGISTROS -->
@@ -1609,7 +1963,25 @@ input[type="file"]{display:none}
       <button class="pbtn" onclick="clearFilters()" title="Limpar filtros">✕ Limpar</button>
     </div>
     <div id="resultCount" style="padding:5px 16px;font-size:11px;color:var(--muted);background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0"></div>
+    <!-- v20: Barra de ações em massa (aparece quando há 1+ selecionado) -->
+    <div id="bulkBar" style="display:none;padding:10px 16px;background:linear-gradient(90deg,rgba(59,130,246,.15),rgba(59,130,246,.05));border-bottom:1px solid rgba(59,130,246,.25);align-items:center;gap:12px;flex-wrap:wrap">
+      <strong id="bulkCount" style="color:#93c5fd;font-size:13px;letter-spacing:.3px">0 selecionados</strong>
+      <div style="flex:1"></div>
+      <select id="bulkStatus" style="padding:7px 12px;border-radius:8px;border:1px solid rgba(99,179,237,.2);background:rgba(255,255,255,.03);color:#e8f4ff;font-size:12px;font-weight:600;cursor:pointer;outline:none">
+        <option value="">Mudar status para…</option>
+        <option value="PAGO">🟢 PAGO</option>
+        <option value="PENDENTE">🟡 PENDENTE</option>
+        <option value="NÃO PAGO">🔴 NÃO PAGO</option>
+        <option value="VERIFICAR">🔍 VERIFICAR</option>
+        <option value="GLOSADO">⛔ GLOSADO</option>
+      </select>
+      <button onclick="bulkAplicarStatus()" class="pbtn pbtn-a" style="padding:7px 14px;font-size:11px">✔ Aplicar</button>
+      <button onclick="bulkExportar()" class="pbtn" style="padding:7px 14px;font-size:11px;color:#93c5fd">📊 Exportar seleção</button>
+      <button onclick="bulkExcluir()" class="pbtn" style="padding:7px 14px;font-size:11px;color:#f87171;border-color:rgba(248,113,113,.3)">🗑 Excluir</button>
+      <button onclick="bulkLimparSelecao()" class="pbtn" style="padding:7px 14px;font-size:11px;color:var(--muted)">✕ Limpar</button>
+    </div>
     <div class="tw"><table><thead><tr>
+      <th style="width:28px;padding:6px 8px"><input type="checkbox" id="bulkAll" onchange="toggleBulkAll(this)" style="cursor:pointer"></th>
       <th class="sortable" data-sort="data" onclick="setSort('data')">Data<span class="sort-arrow">▼</span></th>
       <th class="sortable" data-sort="medico" onclick="setSort('medico')">Médico<span class="sort-arrow">▼</span></th>
       <th class="sortable" data-sort="paciente" onclick="setSort('paciente')">Paciente<span class="sort-arrow">▼</span></th>
@@ -1737,8 +2109,88 @@ input[type="file"]{display:none}
               oninput="this.value = this.value.replace(/\D/g,'')">
           </div>
         </div>
+        <!-- v19: campos clínicos expandidos -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:10px">
+          <div>
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Especialidade</label>
+            <select id="novoProcEspecialidade"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:12px;padding:10px 10px;outline:none">
+              <option value="">—</option>
+              <option value="CIRURGIA_GERAL">Cirurgia Geral</option>
+              <option value="UROLOGIA">Urologia</option>
+              <option value="OBSTETRICIA">Obstetrícia</option>
+              <option value="GINECOLOGIA">Ginecologia</option>
+              <option value="ANESTESIOLOGIA">Anestesiologia</option>
+              <option value="OTORRINOLARINGOLOGIA">ORL</option>
+              <option value="OFTALMOLOGIA">Oftalmologia</option>
+              <option value="ORTOPEDIA">Ortopedia</option>
+              <option value="ENDOSCOPIA">Endoscopia</option>
+              <option value="CARDIOLOGIA">Cardiologia</option>
+              <option value="NEUROCIRURGIA">Neurocirurgia</option>
+              <option value="CIRURGIA_VASCULAR">Cir. Vascular</option>
+              <option value="CIRURGIA_PLASTICA">Cir. Plástica</option>
+              <option value="MASTOLOGIA">Mastologia</option>
+              <option value="PROCTOLOGIA">Proctologia</option>
+              <option value="CIRURGIA_TORACICA">Cir. Torácica</option>
+              <option value="CIRURGIA_BARIATRICA">Cir. Bariátrica</option>
+              <option value="PEDIATRIA">Pediatria</option>
+              <option value="DERMATOLOGIA">Dermatologia</option>
+              <option value="BUCOMAXILOFACIAL">Bucomaxilofacial</option>
+              <option value="RADIOLOGIA_INTERVENCIONISTA">Radiol. Interv.</option>
+              <option value="PNEUMOLOGIA">Pneumologia</option>
+              <option value="ONCOLOGIA">Oncologia</option>
+              <option value="NEFROLOGIA">Nefrologia</option>
+              <option value="OUTRA">Outra</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Porte Anest.</label>
+            <select id="novoProcPorte"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:12px;padding:10px 10px;outline:none">
+              <option value="">—</option>
+              <option value="1">1 (mínimo)</option>
+              <option value="2">2 (pequeno)</option>
+              <option value="3">3 (médio)</option>
+              <option value="3P">3P (parto)</option>
+              <option value="4">4 (grande)</option>
+              <option value="5">5 (maior)</option>
+              <option value="6">6 (muito maior)</option>
+              <option value="7">7 (complexo)</option>
+              <option value="8">8 (especial)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Via de acesso</label>
+            <select id="novoProcVia"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:12px;padding:10px 10px;outline:none">
+              <option value="">—</option>
+              <option value="ABERTA">Aberta</option>
+              <option value="VIDEO">Videolaparoscópica</option>
+              <option value="ROBOTICA">Robótica</option>
+              <option value="ENDOSCOPICA">Endoscópica</option>
+              <option value="PERCUTANEA">Percutânea</option>
+              <option value="MICROCIRURGICA">Microcirúrgica</option>
+              <option value="NA">N/A</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Lateralidade</label>
+            <select id="novoProcLat"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:12px;padding:10px 10px;outline:none">
+              <option value="">—</option>
+              <option value="UNILATERAL">Unilateral</option>
+              <option value="BILATERAL">Bilateral</option>
+              <option value="NA">N/A</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Auxiliares</label>
+            <input type="number" id="novoProcAux" min="0" max="3" value="0"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
+          </div>
+        </div>
         <div style="display:flex;gap:10px;align-items:stretch">
-          <input type="text" id="novoProcObs" placeholder="Observação (opcional): ex. unilateral/bilateral, critério de uso..."
+          <input type="text" id="novoProcObs" placeholder="Observação (opcional): ex. critério de uso, sinônimos..."
             style="flex:1;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:12px;padding:9px 12px;outline:none">
           <button onclick="addProcedimento()" class="pbtn pbtn-a" style="padding:10px 22px;font-size:11px;white-space:nowrap">💾 Cadastrar</button>
         </div>
@@ -1750,6 +2202,33 @@ input[type="file"]{display:none}
         <div class="sw" style="flex:1;min-width:240px"><span class="si">🔍</span>
           <input type="text" id="procFiltro" placeholder="Buscar procedimento, SIGTAP ou TUSS..." oninput="renderProcedimentosAdmin()">
         </div>
+        <!-- v19: filtro por especialidade -->
+        <select id="procFiltroEspecialidade" onchange="renderProcedimentosAdmin()"
+          style="background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:12px;padding:8px 10px;outline:none;min-width:170px">
+          <option value="">Todas especialidades</option>
+          <option value="CIRURGIA_GERAL">Cirurgia Geral</option>
+          <option value="UROLOGIA">Urologia</option>
+          <option value="OBSTETRICIA">Obstetrícia</option>
+          <option value="GINECOLOGIA">Ginecologia</option>
+          <option value="ANESTESIOLOGIA">Anestesiologia</option>
+          <option value="OTORRINOLARINGOLOGIA">ORL</option>
+          <option value="OFTALMOLOGIA">Oftalmologia</option>
+          <option value="ORTOPEDIA">Ortopedia</option>
+          <option value="ENDOSCOPIA">Endoscopia</option>
+          <option value="CARDIOLOGIA">Cardiologia</option>
+          <option value="NEUROCIRURGIA">Neurocirurgia</option>
+          <option value="CIRURGIA_VASCULAR">Cir. Vascular</option>
+          <option value="CIRURGIA_PLASTICA">Cir. Plástica</option>
+          <option value="MASTOLOGIA">Mastologia</option>
+          <option value="PROCTOLOGIA">Proctologia</option>
+          <option value="CIRURGIA_TORACICA">Cir. Torácica</option>
+          <option value="CIRURGIA_BARIATRICA">Cir. Bariátrica</option>
+          <option value="PEDIATRIA">Pediatria</option>
+          <option value="DERMATOLOGIA">Dermatologia</option>
+          <option value="BUCOMAXILOFACIAL">Bucomaxilofacial</option>
+          <option value="RADIOLOGIA_INTERVENCIONISTA">Radiol. Interv.</option>
+          <option value="OUTRA">Outra</option>
+        </select>
         <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer">
           <input type="checkbox" id="procMostrarInativos" onchange="renderProcedimentosAdmin()" style="cursor:pointer">
           Mostrar inativos
@@ -1789,9 +2268,9 @@ input[type="file"]{display:none}
   </div>
 </div>
 
-<!-- MODAL EDITAR PROCEDIMENTO -->
+<!-- MODAL EDITAR PROCEDIMENTO (v19: campos clínicos expandidos) -->
 <div class="mov" id="movEditarProc">
-  <div class="modal" style="max-width:480px">
+  <div class="modal" style="max-width:560px">
     <h3>✏️ Editar Procedimento</h3>
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Os registros já salvos não mudam; a alteração vale para novos lançamentos.</p>
     <input type="hidden" id="editProcId">
@@ -1809,6 +2288,74 @@ input[type="file"]{display:none}
           oninput="this.value = this.value.replace(/\D/g,'')"
           style="font-family:'DM Mono','Courier New',monospace;letter-spacing:.5px">
       </div>
+    </div>
+    <div class="mr2">
+      <div class="mf"><label>Especialidade</label>
+        <select id="editProcEspecialidade">
+          <option value="">—</option>
+          <option value="CIRURGIA_GERAL">Cirurgia Geral</option>
+          <option value="UROLOGIA">Urologia</option>
+          <option value="OBSTETRICIA">Obstetrícia</option>
+          <option value="GINECOLOGIA">Ginecologia</option>
+          <option value="ANESTESIOLOGIA">Anestesiologia</option>
+          <option value="OTORRINOLARINGOLOGIA">ORL</option>
+          <option value="OFTALMOLOGIA">Oftalmologia</option>
+          <option value="ORTOPEDIA">Ortopedia</option>
+          <option value="ENDOSCOPIA">Endoscopia</option>
+          <option value="CARDIOLOGIA">Cardiologia</option>
+          <option value="NEUROCIRURGIA">Neurocirurgia</option>
+          <option value="CIRURGIA_VASCULAR">Cir. Vascular</option>
+          <option value="CIRURGIA_PLASTICA">Cir. Plástica</option>
+          <option value="MASTOLOGIA">Mastologia</option>
+          <option value="PROCTOLOGIA">Proctologia</option>
+          <option value="CIRURGIA_TORACICA">Cir. Torácica</option>
+          <option value="CIRURGIA_BARIATRICA">Cir. Bariátrica</option>
+          <option value="PEDIATRIA">Pediatria</option>
+          <option value="DERMATOLOGIA">Dermatologia</option>
+          <option value="BUCOMAXILOFACIAL">Bucomaxilofacial</option>
+          <option value="RADIOLOGIA_INTERVENCIONISTA">Radiol. Interv.</option>
+          <option value="OUTRA">Outra</option>
+        </select>
+      </div>
+      <div class="mf"><label>Porte Anestésico</label>
+        <select id="editProcPorte">
+          <option value="">—</option>
+          <option value="1">1 (mínimo)</option>
+          <option value="2">2 (pequeno)</option>
+          <option value="3">3 (médio)</option>
+          <option value="3P">3P (parto)</option>
+          <option value="4">4 (grande)</option>
+          <option value="5">5 (maior)</option>
+          <option value="6">6 (muito maior)</option>
+          <option value="7">7 (complexo)</option>
+          <option value="8">8 (especial)</option>
+        </select>
+      </div>
+    </div>
+    <div class="mr2">
+      <div class="mf"><label>Via de acesso</label>
+        <select id="editProcVia">
+          <option value="">—</option>
+          <option value="ABERTA">Aberta</option>
+          <option value="VIDEO">Videolaparoscópica</option>
+          <option value="ROBOTICA">Robótica</option>
+          <option value="ENDOSCOPICA">Endoscópica</option>
+          <option value="PERCUTANEA">Percutânea</option>
+          <option value="MICROCIRURGICA">Microcirúrgica</option>
+          <option value="NA">N/A</option>
+        </select>
+      </div>
+      <div class="mf"><label>Lateralidade</label>
+        <select id="editProcLat">
+          <option value="">—</option>
+          <option value="UNILATERAL">Unilateral</option>
+          <option value="BILATERAL">Bilateral</option>
+          <option value="NA">N/A</option>
+        </select>
+      </div>
+    </div>
+    <div class="mf"><label>Auxiliares previstos</label>
+      <input type="number" id="editProcAux" min="0" max="3" value="0">
     </div>
     <div class="mf"><label>Observação</label>
       <input type="text" id="editProcObs" placeholder="Opcional">
@@ -2069,6 +2616,23 @@ input[type="file"]{display:none}
       <button class="det-close" onclick="closeDet()">✕</button>
     </div>
     <div class="det-grid" id="detGrid"></div>
+
+    <!-- v20: Timeline de alterações + comentários internos -->
+    <div id="detTimelineSection" style="margin-top:14px;border-top:1px solid rgba(99,179,237,.1);padding-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <strong style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;font-weight:700">📜 Histórico e Comentários</strong>
+        <span id="detTimelineCount" style="font-size:10px;color:var(--muted)"></span>
+      </div>
+      <div id="detTimelineList" style="max-height:260px;overflow-y:auto;background:rgba(15,24,44,.4);border:1px solid rgba(99,179,237,.08);border-radius:9px;padding:10px;font-size:12px">
+        <div style="color:var(--muted);font-size:11px;text-align:center;padding:14px">Carregando...</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:stretch">
+        <textarea id="detComentarioInput" rows="2" placeholder="Adicionar comentário interno... (visível pro médico e pro admin)"
+          style="flex:1;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:12px;padding:9px 12px;outline:none;resize:vertical"></textarea>
+        <button onclick="adicionarComentario()" class="pbtn pbtn-a" style="padding:8px 16px;font-size:11px;white-space:nowrap">💬 Enviar</button>
+      </div>
+    </div>
+
     <div class="det-actions">
       <button id="detEditBtn" class="mbs" onclick="editFromDet()">✏️ Editar</button>
       <button id="detDelBtn" style="background:rgba(248,113,113,.15);color:#f87171;flex:1;padding:10px;border-radius:9px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;border:1px solid rgba(248,113,113,.2)" onclick="delFromDet()">🗑 Excluir</button>
@@ -2122,15 +2686,16 @@ function safeHTML(dirty) {
 // Em produção os usuários são carregados do Supabase via loadUsuarios().
 // Este objeto é usado apenas quando o Supabase está indisponível.
 const USUARIOS = {
-  'maike':     { id:'maike',     nome:'Dr. Maike',            especialidade:'Anestesiologista', senha:'Maike@2024',  emoji:'💉', cor:'rgba(74,222,128,.12)'  },
-  'ivan':      { id:'ivan',      nome:'Dr. Ivan',             especialidade:'Cirurgião',        senha:'Ivan@2024',   emoji:'🔪', cor:'rgba(59,130,246,.12)'  },
-  'nivan':     { id:'nivan',     nome:'Dr. Nivan',            especialidade:'Urologista',       senha:'Nivan@2024',  emoji:'🫘', cor:'rgba(251,191,36,.12)'  },
-  'azzi':      { id:'azzi',      nome:'Dr. Antonio Azzi',     especialidade:'Anestesiologista', senha:'Azzi@2024',   emoji:'💉', cor:'rgba(192,132,252,.12)' },
-  'cristiano': { id:'cristiano', nome:'Dr. Cristiano',        especialidade:'Obstetra',         senha:'Cris@2024',   emoji:'👶', cor:'rgba(248,113,113,.12)' },
-  'zolder':    { id:'zolder',    nome:'Dr. Zolder',           especialidade:'Obstetra',         senha:'Zolder@2024', emoji:'👶', cor:'rgba(251,146,60,.12)'  },
-  'marco':     { id:'marco',     nome:'Dr. Marco Antonio',    especialidade:'Anestesiologista', senha:'Marco@2024',  emoji:'💉', cor:'rgba(56,189,248,.12)'  },
-  'andre':     { id:'andre',     nome:'Dr. Andre Sacramento', especialidade:'Pediatra',         senha:'Andre@2024',  emoji:'🧒', cor:'rgba(52,211,153,.12)'  },
-  'conf':      { id:'conf',      nome:'Letícia',              especialidade:'Administradora',   senha:'Conf@2024',   emoji:'📊', cor:'rgba(59,130,246,.12)'  },
+  'maike':     { id:'maike',     nome:'Dr. Maike',            especialidade:'Anestesiologista', senha:'Maike@2024',     emoji:'💉', cor:'rgba(74,222,128,.12)'   },
+  'ivan':      { id:'ivan',      nome:'Dr. Ivan',             especialidade:'Cirurgião',        senha:'Ivan@2024',      emoji:'🔪', cor:'rgba(59,130,246,.12)'   },
+  'nivan':     { id:'nivan',     nome:'Dr. Nivan',            especialidade:'Urologista',       senha:'Nivan@2024',     emoji:'🫘', cor:'rgba(251,191,36,.12)'   },
+  'azzi':      { id:'azzi',      nome:'Dr. Antonio Azzi',     especialidade:'Anestesiologista', senha:'Azzi@2024',      emoji:'💉', cor:'rgba(192,132,252,.12)'  },
+  'cristiano': { id:'cristiano', nome:'Dr. Cristiano',        especialidade:'Obstetra',         senha:'Cris@2024',      emoji:'👶', cor:'rgba(248,113,113,.12)'  },
+  'zolder':    { id:'zolder',    nome:'Dr. Zolder',           especialidade:'Obstetra',         senha:'Zolder@2024',    emoji:'👶', cor:'rgba(251,146,60,.12)'   },
+  'marco':     { id:'marco',     nome:'Dr. Marco Antonio',    especialidade:'Anestesiologista', senha:'Marco@2024',     emoji:'💉', cor:'rgba(56,189,248,.12)'   },
+  'andre':     { id:'andre',     nome:'Dr. Andre Sacramento', especialidade:'Pediatra',         senha:'Andre@2024',     emoji:'🧒', cor:'rgba(52,211,153,.12)'   },
+  'frederico': { id:'frederico', nome:'Dr. Frederico',        especialidade:'Ortopedista',      senha:'Frederico@2024', emoji:'🦴', cor:'rgba(167,139,250,.12)' },
+  'conf':      { id:'conf',      nome:'Letícia',              especialidade:'Administradora',   senha:'Conf@2024',      emoji:'📊', cor:'rgba(59,130,246,.12)'   },
 };
 // ⚠️ As senhas do fallback acima só valem se o Supabase estiver offline.
 // Em uso normal, a tabela `usuarios` do banco é a fonte da verdade.
@@ -2139,6 +2704,13 @@ const USUARIOS = {
 let MEDICOS = Object.fromEntries(
   Object.entries(USUARIOS).filter(([k]) => k !== 'conf').map(([k,v]) => [k,v])
 );
+
+// v21: cor base para renderização em chips/badges do Dr. Frederico
+const _CHIP_CORES = {
+  maike:'#4ade80', ivan:'#60a5fa', nivan:'#fbbf24', azzi:'#c084fc',
+  cristiano:'#f87171', zolder:'#fb923c', marco:'#38bdf8', andre:'#34d399',
+  frederico:'#a78bfa'
+};
 let PINS = { conf: USUARIOS.conf.senha };
 
 // USUARIOS_DB contém a versão vinda do Supabase (pode ser null no início)
@@ -2158,6 +2730,7 @@ async function loadUsuarios() {
       nivan:'rgba(251,191,36,.12)', azzi:'rgba(192,132,252,.12)',
       cristiano:'rgba(248,113,113,.12)', zolder:'rgba(251,146,60,.12)',
       marco:'rgba(56,189,248,.12)', andre:'rgba(52,211,153,.12)',
+      frederico:'rgba(167,139,250,.12)',
       conf:'rgba(59,130,246,.12)'
     };
     for (const u of rows) {
@@ -2326,7 +2899,11 @@ const SIGTAP_MAP = {
 
 // ══ PROCEDIMENTOS DINÂMICOS (via Supabase) ══
 // Carregados em loadProcedimentos(); combinam-se com SIGTAP_MAP (estático/fallback).
-// PROCEDIMENTOS_DB[nome_em_maiusculas] = { sigtap, tuss, id, ativo, obs }
+// PROCEDIMENTOS_DB[nome_em_maiusculas] = {
+//   id, sigtap, tuss, ativo, obs,
+//   especialidade, porte_anestesico, via_acesso, lateralidade, auxiliares
+// }
+// v19: campos clínicos expandidos para suportar catálogo multi-especialidade.
 let PROCEDIMENTOS_DB = null;
 
 async function loadProcedimentos() {
@@ -2335,8 +2912,16 @@ async function loadProcedimentos() {
     const db = {};
     for (const p of rows) {
       db[(p.nome || '').toUpperCase()] = {
-        id: p.id, sigtap: p.sigtap || '', tuss: p.tuss || '',
-        ativo: p.ativo !== false, obs: p.obs || ''
+        id: p.id,
+        sigtap: p.sigtap || '',
+        tuss: p.tuss || '',
+        ativo: p.ativo !== false,
+        obs: p.obs || '',
+        especialidade: p.especialidade || '',
+        porte_anestesico: p.porte_anestesico || '',
+        via_acesso: p.via_acesso || '',
+        lateralidade: p.lateralidade || '',
+        auxiliares: p.auxiliares ?? 0
       };
     }
     PROCEDIMENTOS_DB = db;
@@ -2352,6 +2937,7 @@ async function loadProcedimentos() {
 //   - procedimentos do banco (ativos)
 //   - chaves do SIGTAP_MAP estático
 // Mantém compat com o HTML atual e estende com procedimentos cadastrados na UI.
+// v19: datalist continua sendo fallback; a busca principal agora é via typeahead server-side.
 function populateProcDatalist() {
   const dl = document.getElementById('procList');
   if (!dl) return;
@@ -2366,16 +2952,176 @@ function populateProcDatalist() {
 
 // Busca códigos (SIGTAP + TUSS) do procedimento digitado.
 // Prioridade: 1) PROCEDIMENTOS_DB (dinâmico)  2) SIGTAP_MAP (estático)
+// v19: retorna também porte anestésico, especialidade, via de acesso, lateralidade
 function lookupCodigos(nomeProc) {
   const k = (nomeProc || '').trim().toUpperCase();
   if (!k) return null;
   if (PROCEDIMENTOS_DB && PROCEDIMENTOS_DB[k]) {
-    return { sigtap: PROCEDIMENTOS_DB[k].sigtap, tuss: PROCEDIMENTOS_DB[k].tuss };
+    const p = PROCEDIMENTOS_DB[k];
+    return {
+      sigtap: p.sigtap, tuss: p.tuss,
+      especialidade: p.especialidade, porte_anestesico: p.porte_anestesico,
+      via_acesso: p.via_acesso, lateralidade: p.lateralidade,
+      auxiliares: p.auxiliares
+    };
   }
   if (SIGTAP_MAP[k]) {
     return { sigtap: SIGTAP_MAP[k], tuss: '' };
   }
   return null;
+}
+
+// ══ TYPEAHEAD SERVER-SIDE (via RPC buscar_procedimento) ══
+// Usado pelo autocomplete do formulário de registro.
+// Tolera acento, erro de digitação, busca por código parcial SIGTAP/TUSS.
+// Debounced pelo handler que chama esta função.
+async function buscarProcedimentosServer(termo, especialidadeFiltro = null, limite = 15) {
+  const t = (termo || '').trim();
+  if (!t) return [];
+  try {
+    // RPC do Postgres exposta via PostgREST
+    const body = { termo: t, especialidade_filtro: especialidadeFiltro, limite };
+    const res = await sbFetch('rpc/buscar_procedimento', 'POST', body);
+    return Array.isArray(res) ? res : [];
+  } catch (e) {
+    console.warn('[CUME] RPC buscar_procedimento falhou — fallback local:', e.message);
+    // Fallback: busca no PROCEDIMENTOS_DB + SIGTAP_MAP local
+    const termoUp = t.toUpperCase();
+    const matches = [];
+    if (PROCEDIMENTOS_DB) {
+      for (const [nome, p] of Object.entries(PROCEDIMENTOS_DB)) {
+        if (nome.includes(termoUp) ||
+            (p.sigtap && p.sigtap.startsWith(termoUp)) ||
+            (p.tuss && p.tuss.startsWith(termoUp))) {
+          matches.push({
+            id: p.id, nome, sigtap: p.sigtap, tuss: p.tuss,
+            especialidade: p.especialidade, porte_anestesico: p.porte_anestesico,
+            via_acesso: p.via_acesso, lateralidade: p.lateralidade,
+            auxiliares: p.auxiliares, obs: p.obs
+          });
+        }
+      }
+    }
+    // Complementa com SIGTAP_MAP
+    for (const nome of Object.keys(SIGTAP_MAP)) {
+      if (nome.includes(termoUp) && !matches.some(m => m.nome === nome)) {
+        matches.push({ id: null, nome, sigtap: SIGTAP_MAP[nome], tuss: '', especialidade: '', porte_anestesico: '' });
+      }
+    }
+    return matches.slice(0, limite);
+  }
+}
+
+// Estado do typeahead (um componente global por input — inputId → state)
+const _typeahead = {};
+
+// Abre/mantém o dropdown de sugestões para um input de procedimento.
+// inputId: id do input (ex: 'mProc')
+// targetIds: { sigtap, tuss } — inputs que recebem auto-fill ao selecionar
+function ativarTypeaheadProc(inputId, targetIds = {}) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  if (input._typeaheadAtivado) return;
+  input._typeaheadAtivado = true;
+
+  // Cria container do dropdown (posicionado abaixo do input)
+  let box = document.getElementById(inputId + '_tabox');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = inputId + '_tabox';
+    box.className = 'ta-box';
+    box.style.cssText = 'position:absolute;z-index:1000;display:none;background:var(--s2);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.6);max-height:320px;overflow-y:auto;min-width:280px;font-family:DM Sans,sans-serif';
+    document.body.appendChild(box);
+  }
+
+  const state = _typeahead[inputId] = { open:false, results:[], highlight:-1, timer:null };
+
+  const posicionarBox = () => {
+    const r = input.getBoundingClientRect();
+    box.style.top  = (window.scrollY + r.bottom + 4) + 'px';
+    box.style.left = (window.scrollX + r.left) + 'px';
+    box.style.width = Math.max(r.width, 320) + 'px';
+  };
+
+  const fecharBox = () => {
+    state.open = false;
+    box.style.display = 'none';
+    state.highlight = -1;
+  };
+
+  const abrirBox = () => {
+    state.open = true;
+    posicionarBox();
+    box.style.display = 'block';
+  };
+
+  const renderResultados = () => {
+    if (!state.results.length) {
+      box.innerHTML = `<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">Nenhum procedimento encontrado</div>`;
+      return;
+    }
+    box.innerHTML = state.results.map((r, i) => {
+      const sel = i === state.highlight;
+      const codigos = [
+        r.sigtap ? `<span style="font-family:'DM Mono','Courier New',monospace;font-size:10px;color:#93c5fd;background:rgba(59,130,246,.08);padding:1px 6px;border-radius:4px">SUS ${r.sigtap}</span>` : '',
+        r.tuss   ? `<span style="font-family:'DM Mono','Courier New',monospace;font-size:10px;color:#c084fc;background:rgba(192,132,252,.08);padding:1px 6px;border-radius:4px">ANS ${r.tuss}</span>` : '',
+        r.porte_anestesico ? `<span style="font-size:10px;color:#fbbf24;background:rgba(251,191,36,.08);padding:1px 6px;border-radius:4px">P${r.porte_anestesico}</span>` : ''
+      ].filter(Boolean).join(' ');
+      const esp = r.especialidade ? `<span style="font-size:9px;color:var(--muted);letter-spacing:.5px">${r.especialidade.replace(/_/g,' ')}</span>` : '';
+      return `<div class="ta-item" data-i="${i}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(99,179,237,.05);${sel?'background:rgba(59,130,246,.12)':''}">
+        <div style="color:var(--white);font-size:12px;font-weight:600;margin-bottom:3px;letter-spacing:.2px">${escapeHtml(r.nome)}</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">${codigos}${esp}</div>
+      </div>`;
+    }).join('');
+    // Click handlers
+    box.querySelectorAll('.ta-item').forEach(el => {
+      el.addEventListener('mousedown', (ev) => { ev.preventDefault(); selecionar(Number(el.dataset.i)); });
+      el.addEventListener('mouseenter', () => { state.highlight = Number(el.dataset.i); renderResultados(); });
+    });
+  };
+
+  const selecionar = (i) => {
+    const r = state.results[i];
+    if (!r) return;
+    input.value = r.nome;
+    // auto-fill campos relacionados se existirem
+    const sig = targetIds.sigtap ? document.getElementById(targetIds.sigtap) : null;
+    const tus = targetIds.tuss   ? document.getElementById(targetIds.tuss)   : null;
+    if (sig && r.sigtap) sig.value = r.sigtap;
+    if (tus && r.tuss)   tus.value = r.tuss;
+    fecharBox();
+  };
+
+  const buscar = async () => {
+    const termo = input.value.trim();
+    if (termo.length < 2) { fecharBox(); return; }
+    const res = await buscarProcedimentosServer(termo, null, 15);
+    state.results = res;
+    state.highlight = res.length ? 0 : -1;
+    renderResultados();
+    abrirBox();
+  };
+
+  input.addEventListener('input', () => {
+    clearTimeout(state.timer);
+    state.timer = setTimeout(buscar, 180);
+  });
+
+  input.addEventListener('focus', () => { if (input.value.trim().length >= 2) buscar(); });
+
+  input.addEventListener('keydown', (ev) => {
+    if (!state.open) return;
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); state.highlight = Math.min(state.highlight + 1, state.results.length - 1); renderResultados(); }
+    else if (ev.key === 'ArrowUp')  { ev.preventDefault(); state.highlight = Math.max(state.highlight - 1, 0); renderResultados(); }
+    else if (ev.key === 'Enter') {
+      if (state.highlight >= 0) { ev.preventDefault(); selecionar(state.highlight); }
+    }
+    else if (ev.key === 'Escape') { fecharBox(); }
+  });
+
+  input.addEventListener('blur', () => { setTimeout(fecharBox, 150); });
+  window.addEventListener('scroll', () => { if (state.open) posicionarBox(); }, true);
+  window.addEventListener('resize', () => { if (state.open) posicionarBox(); });
 }
 
 // Preenche SIGTAP e TUSS automaticamente a partir do nome do procedimento.
@@ -2430,6 +3176,70 @@ async function sbFetch(path, method = 'GET', body = null, extra = {}) {
   if (!r.ok) throw new Error(await r.text());
   const txt = await r.text();
   return txt ? JSON.parse(txt) : null;
+}
+
+// ══ AUDIT LOG (v20) ══
+// Sistema de trilha de auditoria: toda operação relevante em registros gera
+// um evento na tabela registro_auditoria. Permite rastrear quem fez o quê,
+// quando, e anexar comentários internos entre conferente e médico.
+//
+// Uso: await logAuditoria({ registroId, tipo, campo?, antigo?, novo?, comentario?, metadata? })
+// Silenciosa em caso de erro (nunca quebra a operação principal).
+
+async function logAuditoria(params) {
+  const { registroId, tipo, campo, antigo, novo, comentario, metadata } = params || {};
+  if (!registroId || !tipo) return null;
+  try {
+    const u = getUsuario(currentProfile) || {};
+    const body = {
+      p_registro_id:   registroId,
+      p_tipo:          tipo,
+      p_usuario_id:    currentProfile || null,
+      p_usuario_nome:  u.nome || currentProfile || null,
+      p_campo:         campo || null,
+      p_valor_antigo:  antigo != null ? String(antigo) : null,
+      p_valor_novo:    novo != null ? String(novo) : null,
+      p_comentario:    comentario || null,
+      p_metadata:      metadata || null
+    };
+    const res = await sbFetch('rpc/registrar_evento', 'POST', body);
+    return res;
+  } catch (e) {
+    console.warn('[CUME] logAuditoria falhou (não crítico):', e.message);
+    return null;
+  }
+}
+
+// Compara dois registros e loga os campos que mudaram como eventos EDICAO individuais.
+// Chamado após uma edição bem-sucedida.
+async function logDiffRegistro(registroId, antes, depois) {
+  if (!registroId || !antes || !depois) return;
+  const campos = [
+    'data','paciente','procedimento','sigtap','tuss','convenio','hospital',
+    'status','valorPago','valorEstimado','obs','participacao',
+    'glosaData','glosaMotivo','glosaRecurso'
+  ];
+  for (const c of campos) {
+    const a = antes[c] == null ? '' : String(antes[c]);
+    const d = depois[c] == null ? '' : String(depois[c]);
+    if (a !== d) {
+      // Status vira tipo próprio pra destacar na timeline
+      const tipo = (c === 'status') ? 'STATUS' : 'EDICAO';
+      await logAuditoria({ registroId, tipo, campo: c, antigo: a, novo: d });
+    }
+  }
+}
+
+// Busca timeline completa de eventos de um registro via RPC.
+async function fetchTimelineRegistro(registroId) {
+  if (!registroId) return [];
+  try {
+    const res = await sbFetch('rpc/eventos_do_registro', 'POST', { p_registro_id: registroId });
+    return Array.isArray(res) ? res : [];
+  } catch (e) {
+    console.warn('[CUME] fetchTimelineRegistro falhou:', e.message);
+    return [];
+  }
 }
 
 // ══ STATE ══
@@ -2876,6 +3686,227 @@ function swTab(name,el) {
   }
   if(name==='medicos') { renderMedicosAdmin(); renderHospitaisAdmin(); }
   if(name==='procedimentos') { renderProcedimentosAdmin(); }
+  if(name==='central') { renderCentral(); }
+  if(name==='importar') { cImpPreparar(); }
+}
+
+// ══ IMPORT NO PAINEL CONF (v21) ══
+// Mesmo fluxo do médico, mas com seletor de médico (conf importa pra qualquer um).
+let _cImpArquivo = null;
+
+function cImpPreparar() {
+  // Popula o select de médico com os ativos
+  const sel = document.getElementById('cImpMedico');
+  if (!sel) return;
+  const medicosAtivos = Object.entries(USUARIOS_DB || MEDICOS || {})
+    .filter(([id, u]) => u.role === 'medico' && u.ativo !== false)
+    .sort((a, b) => (a[1].nome || '').localeCompare(b[1].nome || ''));
+  const valorAtual = sel.value;
+  sel.innerHTML = '<option value="">— selecione o médico —</option>' +
+    medicosAtivos.map(([id, u]) => `<option value="${id}">${u.emoji || ''} ${u.nome} · ${u.especialidade || ''}</option>`).join('');
+  sel.value = valorAtual || (typeof medicoFilter !== 'undefined' && medicoFilter ? medicoFilter : '');
+  // DnD
+  const zona = document.getElementById('cImpDropZone');
+  if (zona && !zona._dndReady) {
+    zona._dndReady = true;
+    ['dragover','dragenter'].forEach(ev => zona.addEventListener(ev, e => {
+      e.preventDefault(); zona.style.borderColor = '#3b82f6'; zona.style.background = 'rgba(59,130,246,.08)';
+    }));
+    ['dragleave','drop'].forEach(ev => zona.addEventListener(ev, e => {
+      e.preventDefault(); zona.style.borderColor = 'rgba(99,179,237,.25)'; zona.style.background = 'rgba(15,24,44,.4)';
+    }));
+    zona.addEventListener('drop', e => {
+      const f = e.dataTransfer?.files?.[0];
+      if (f) cImpProcessarArquivo({ target: { files: [f] } });
+    });
+  }
+}
+
+async function cImpProcessarArquivo(ev) {
+  const f = ev.target.files?.[0];
+  if (!f) return;
+  _cImpArquivo = f;
+  document.getElementById('cImpNomeArquivo').textContent = f.name;
+  document.getElementById('cImpInfoArquivo').textContent = `${(f.size/1024).toFixed(1)} KB · ${f.type || 'tipo desconhecido'}`;
+  const img = document.getElementById('cImpPreviewImg');
+  if (f.type.startsWith('image/')) {
+    img.src = URL.createObjectURL(f);
+    img.style.display = 'block';
+  } else if (f.type === 'application/pdf') {
+    try {
+      const buf = await f.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      const page = await pdf.getPage(1);
+      const vp = page.getViewport({ scale: 1.5 });
+      const canvas = document.createElement('canvas');
+      canvas.width = vp.width; canvas.height = vp.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      img.src = canvas.toDataURL('image/png');
+      img.style.display = 'block';
+      _cImpArquivo._pdfCanvas = canvas;
+    } catch (e) { console.warn(e); img.style.display = 'none'; }
+  }
+  document.getElementById('cImpPreview').style.display = 'block';
+  document.getElementById('cImpProgresso').style.display = 'none';
+  document.getElementById('cImpResultado').style.display = 'none';
+}
+
+function cImpLimpar() {
+  _cImpArquivo = null;
+  document.getElementById('cImpFileInput').value = '';
+  document.getElementById('cImpPreview').style.display = 'none';
+  document.getElementById('cImpProgresso').style.display = 'none';
+  document.getElementById('cImpResultado').style.display = 'none';
+  document.getElementById('cImpTexto').value = '';
+  const fb = document.getElementById('cImpFeedback'); if (fb) fb.style.display = 'none';
+}
+
+async function cImpExtrair() {
+  if (!_cImpArquivo) return;
+  if (typeof Tesseract === 'undefined') { alert('OCR ainda carregando. Aguarde alguns segundos.'); return; }
+  const btn = document.getElementById('cImpBtnExtrair');
+  const progBox = document.getElementById('cImpProgresso');
+  const progTxt = document.getElementById('cImpProgressoTxt');
+  const progBar = document.getElementById('cImpProgressoBar');
+  btn.disabled = true; btn.textContent = '⏳ Processando...';
+  progBox.style.display = 'block'; progBar.style.width = '0%';
+  progTxt.textContent = 'Preparando OCR…';
+  try {
+    const fonte = _cImpArquivo._pdfCanvas || _cImpArquivo;
+    const { data } = await Tesseract.recognize(fonte, 'por', {
+      logger: m => {
+        if (m.status && progTxt) {
+          const labels = { 'loading tesseract core':'Carregando OCR…','initializing tesseract':'Inicializando…','loading language traineddata':'Baixando português…','initializing api':'Preparando…','recognizing text':'Lendo texto…' };
+          progTxt.textContent = labels[m.status] || m.status;
+          if (typeof m.progress === 'number') progBar.style.width = Math.round(m.progress * 100) + '%';
+        }
+      }
+    });
+    const texto = (data?.text || '').trim();
+    document.getElementById('cImpTexto').value = texto;
+    document.getElementById('cImpResultado').style.display = 'block';
+    progBox.style.display = 'none';
+    cImpPreencherComExtracao(texto);
+  } catch(e) {
+    progBox.style.display = 'none';
+    alert('Erro ao ler a imagem: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔍 Extrair texto';
+  }
+}
+
+function cImpPreencherComExtracao(texto) {
+  if (!texto) return;
+  // Reaproveita o extrator do fluxo do médico
+  const ex = impExtrairCampos(texto);
+  const hoje = TODAY.toISOString().split('T')[0];
+  document.getElementById('cImpData').value = ex.data || hoje;
+  document.getElementById('cImpPaciente').value = ex.paciente || '';
+  document.getElementById('cImpProcedimento').value = ex.procedimento || '';
+  document.getElementById('cImpSigtap').value = ex.sigtap || '';
+  document.getElementById('cImpTuss').value = ex.tuss || '';
+  document.getElementById('cImpConvenio').value = ex.convenio || '';
+  document.getElementById('cImpValor').value = ex.valor || '';
+  document.getElementById('cImpObs').value = `Importado via print (conferência) em ${new Date().toLocaleDateString('pt-BR')}`;
+  const hospSel = document.getElementById('cImpHospital');
+  hospSel.innerHTML = '<option value="">—</option>' + (HOSPITAIS || []).map(h => `<option value="${h}">${h}</option>`).join('') + '<option value="OUTRO">OUTRO</option>';
+  if (ex.hospital) hospSel.value = ex.hospital;
+  const badge = document.getElementById('cImpConfianca');
+  const c = ex.confianca || 0;
+  const cor = c >= 80 ? '#4ade80' : c >= 50 ? '#fbbf24' : '#f87171';
+  badge.style.background = cor + '22'; badge.style.color = cor; badge.textContent = c + '% identificado';
+  const cand = document.getElementById('cImpPacienteCandidatos');
+  if (ex.pacienteCandidatos && ex.pacienteCandidatos.length > 1) {
+    cand.innerHTML = 'Outras opções detectadas: ' +
+      ex.pacienteCandidatos.slice(0, 5).map(n =>
+        `<a href="#" onclick="event.preventDefault();document.getElementById('cImpPaciente').value='${n.replace(/'/g,"\\'")}';" style="color:#93c5fd;text-decoration:underline;margin:0 3px">${escapeHtml(n)}</a>`
+      ).join(' · ');
+  } else cand.innerHTML = '';
+  // Análise bruta
+  const analise = document.getElementById('cImpAnalise');
+  const mkTag = (l, v, cor) => v ? `<span style="color:var(--muted);font-size:10px;margin-right:6px">${l}:</span><span style="background:${cor}15;color:${cor};font-size:10px;padding:1px 6px;border-radius:4px;margin-right:8px;font-weight:600">${escapeHtml(String(v))}</span>` : '';
+  analise.innerHTML = [
+    mkTag('📅 Datas', (ex.datasEncontradas || []).join(', '), '#93c5fd'),
+    mkTag('💰 Valor', ex.valor, '#4ade80'),
+    mkTag('🏷 Códigos', (ex.codigos || []).join(', '), '#fbbf24'),
+    mkTag('🔬 Alternativas', (ex.procCandidatos || []).slice(1).join(', '), '#fb923c'),
+  ].filter(Boolean).join(' ');
+  // Duplicata: usa o médico selecionado, não o currentProfile
+  const medSel = document.getElementById('cImpMedico').value;
+  const box = document.getElementById('cImpDuplicata');
+  const txt = document.getElementById('cImpDuplicataTxt');
+  if (medSel && ex.paciente && ex.data) {
+    const dup = records.find(r => r.medicoId === medSel && r.data === ex.data && (r.paciente || '').toUpperCase() === ex.paciente.toUpperCase());
+    if (dup) {
+      box.style.display = 'block';
+      txt.innerHTML = `O médico selecionado já tem um registro de <strong>${escapeHtml(dup.paciente)}</strong> em <strong>${new Date(dup.data+'T12:00').toLocaleDateString('pt-BR')}</strong>. Se não for duplicata, pode registrar mesmo assim.`;
+    } else box.style.display = 'none';
+  } else box.style.display = 'none';
+}
+
+function cImpReinterpretar() {
+  const texto = document.getElementById('cImpTexto').value;
+  if (!texto) return;
+  cImpPreencherComExtracao(texto);
+}
+
+async function cImpImportar() {
+  const fb = document.getElementById('cImpFeedback');
+  const mostrarFb = (t, tipo) => {
+    const cores = {
+      ok:'background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);color:#4ade80',
+      warn:'background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);color:#fbbf24',
+      err:'background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:#f87171',
+    };
+    fb.style.cssText = 'display:block;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;margin-top:12px;' + (cores[tipo] || cores.ok);
+    fb.textContent = t;
+  };
+  const medicoAlvo = document.getElementById('cImpMedico').value;
+  if (!medicoAlvo) { mostrarFb('⚠️ Selecione primeiro o médico responsável pelo registro.', 'warn'); return; }
+  const data = document.getElementById('cImpData').value;
+  const paciente = document.getElementById('cImpPaciente').value.trim().toUpperCase();
+  const procedimento = document.getElementById('cImpProcedimento').value.trim().toUpperCase();
+  const sigtap = (document.getElementById('cImpSigtap').value || '').replace(/\D/g,'').trim();
+  const tuss = (document.getElementById('cImpTuss').value || '').replace(/\D/g,'').trim();
+  const convenio = document.getElementById('cImpConvenio').value.trim().toUpperCase();
+  const hospital = document.getElementById('cImpHospital').value;
+  const participacao = document.getElementById('cImpParticipacao').value;
+  const obs = document.getElementById('cImpObs').value.trim();
+  const valorEstimado = document.getElementById('cImpValor').value;
+  if (!data || !paciente || !procedimento || !convenio || !hospital) {
+    mostrarFb('⚠️ Preencha ao menos: Data, Paciente, Procedimento, Convênio e Hospital.', 'warn'); return;
+  }
+  if (sigtap && sigtap.length !== 10) {
+    mostrarFb('⚠️ SIGTAP deve ter 10 dígitos ou ficar em branco.', 'warn'); return;
+  }
+  const rec = {
+    data, paciente, procedimento, sigtap, tuss,
+    convenio, hospital,
+    status: 'PENDENTE',
+    valorPago: '', valorEstimado: valorEstimado || '',
+    obs, isNew: true,
+    medicoId: medicoAlvo,
+    participacao, equipeId: null,
+  };
+  try {
+    // Registro é de outro médico (conf importando) → salva via saveRecord_sb_externo
+    const res = await saveRecord_sb_externo(rec);
+    const idCriado = (res && res[0] && res[0].id) || null;
+    if (idCriado) {
+      await logAuditoria({
+        registroId: idCriado, tipo: 'IMPORT_PDF',
+        comentario: `Importado via print pela conferência · médico: ${medicoAlvo} · papel: ${participacao}`
+      });
+    }
+    // Recarrega registros pra refletir no painel
+    await loadRecords();
+    renderAll();
+    const nomeMed = (getUsuario(medicoAlvo)?.nome || medicoAlvo);
+    mostrarFb(`✅ Registro criado na produção de ${nomeMed}. Aparece na aba Registros.`, 'ok');
+    setTimeout(() => { cImpLimpar(); }, 2000);
+  } catch(e) {
+    mostrarFb('❌ Erro ao salvar: ' + e.message, 'err');
+  }
 }
 
 // ══ PAINEL ADMIN: GERENCIAR MÉDICOS ══
@@ -2883,7 +3914,7 @@ function swTab(name,el) {
 const SENHAS_PADRAO = {
   maike:'Maike@2024', ivan:'Ivan@2024', nivan:'Nivan@2024', azzi:'Azzi@2024',
   cristiano:'Cris@2024', zolder:'Zolder@2024', marco:'Marco@2024',
-  andre:'Andre@2024', conf:'Conf@2024'
+  andre:'Andre@2024', frederico:'Frederico@2024', conf:'Conf@2024'
 };
 let senhaEditandoId = null;
 
@@ -3645,37 +4676,42 @@ async function renderProcedimentosAdmin() {
 
   const mostrarInativos = document.getElementById('procMostrarInativos')?.checked || false;
   const filtro = (document.getElementById('procFiltro')?.value || '').trim().toUpperCase();
+  // v19: filtro de especialidade
+  const filtroEsp = (document.getElementById('procFiltroEspecialidade')?.value || '').trim();
 
   let todos = [];
   try {
-    const qs = mostrarInativos ? 'order=ativo.desc,nome.asc' : 'ativo=eq.true&order=nome.asc';
+    let qs = mostrarInativos ? 'order=ativo.desc,nome.asc' : 'ativo=eq.true&order=nome.asc';
+    if (filtroEsp) qs += '&especialidade=eq.' + encodeURIComponent(filtroEsp);
     todos = await sbFetch('procedimentos?' + qs) || [];
   } catch(e) {
     list.innerHTML = `<div style="grid-column:1/-1;color:#f87171;font-size:12px;padding:16px;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:8px">
-      ❌ Erro ao carregar procedimentos. Rode o <code>SETUP_SUPABASE_procedimentos.sql</code> no Supabase primeiro.
+      ❌ Erro ao carregar procedimentos. Rode o <code>01_migration_procedimentos.sql</code> e depois o <code>02_seed_procedimentos.sql</code> no Supabase.
       <div style="margin-top:6px;color:var(--muted);font-size:11px">Detalhe: ${e.message}</div>
     </div>`;
     document.getElementById('procCount').textContent = '';
     return;
   }
 
-  // Aplica filtro textual (nome, sigtap, tuss, obs)
+  // Aplica filtro textual (nome, sigtap, tuss, obs, especialidade)
   const filtrados = filtro
     ? todos.filter(p =>
         (p.nome || '').toUpperCase().includes(filtro) ||
         (p.sigtap || '').includes(filtro) ||
         (p.tuss || '').includes(filtro) ||
-        (p.obs || '').toUpperCase().includes(filtro)
+        (p.obs || '').toUpperCase().includes(filtro) ||
+        (p.especialidade || '').toUpperCase().includes(filtro)
       )
     : todos;
 
   document.getElementById('procCount').textContent =
     `${filtrados.length} ${filtrados.length === 1 ? 'procedimento' : 'procedimentos'}` +
-    (filtro ? ` · filtro: "${filtro}"` : '');
+    (filtro ? ` · filtro: "${filtro}"` : '') +
+    (filtroEsp ? ` · ${filtroEsp.replace(/_/g,' ')}` : '');
 
   if (filtrados.length === 0) {
     list.innerHTML = `<div style="grid-column:1/-1;color:var(--muted);font-size:12px;padding:16px;text-align:center">
-      ${filtro ? 'Nenhum procedimento bate com o filtro.' : 'Nenhum procedimento cadastrado. Use o formulário acima para adicionar o primeiro.'}
+      ${(filtro || filtroEsp) ? 'Nenhum procedimento bate com o filtro.' : 'Nenhum procedimento cadastrado. Use o formulário acima para adicionar o primeiro.'}
     </div>`;
     return;
   }
@@ -3694,6 +4730,20 @@ async function renderProcedimentosAdmin() {
       ? `<span style="font-family:'DM Mono','Courier New',monospace;font-size:10px;color:#c084fc;background:rgba(192,132,252,.08);padding:3px 7px;border-radius:5px;letter-spacing:.5px" title="Código TUSS/ANS">ANS ${p.tuss}</span>`
       : '<span style="font-size:10px;color:var(--muted);font-style:italic">sem TUSS</span>';
 
+    // v19: badges extras
+    const espBadge = p.especialidade
+      ? `<span style="font-size:9px;color:#fbbf24;background:rgba(251,191,36,.08);padding:2px 6px;border-radius:5px;letter-spacing:.5px">${p.especialidade.replace(/_/g,' ')}</span>`
+      : '';
+    const porteBadge = p.porte_anestesico
+      ? `<span style="font-size:9px;color:#34d399;background:rgba(52,211,153,.08);padding:2px 6px;border-radius:5px;letter-spacing:.5px" title="Porte anestésico">PORTE ${p.porte_anestesico}</span>`
+      : '';
+    const viaBadge = p.via_acesso && p.via_acesso !== 'NA'
+      ? `<span style="font-size:9px;color:var(--muted);background:rgba(99,179,237,.05);padding:2px 6px;border-radius:5px;letter-spacing:.5px">${p.via_acesso}</span>`
+      : '';
+    const latBadge = p.lateralidade && p.lateralidade !== 'NA'
+      ? `<span style="font-size:9px;color:var(--muted);background:rgba(99,179,237,.05);padding:2px 6px;border-radius:5px;letter-spacing:.5px">${p.lateralidade}</span>`
+      : '';
+
     const obsLine = p.obs
       ? `<div style="font-size:10px;color:#c084fc;margin-top:8px;padding-top:8px;border-top:1px dashed rgba(99,179,237,.08)">📌 ${escapeHtml(p.obs)}</div>`
       : '';
@@ -3704,9 +4754,15 @@ async function renderProcedimentosAdmin() {
           <strong style="color:var(--white);font-size:13px;letter-spacing:.2px;flex:1;line-height:1.3">${escapeHtml(p.nome)}</strong>
           ${badge}
         </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">
           ${sigtapBadge}
           ${tussBadge}
+          ${porteBadge}
+        </div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">
+          ${espBadge}
+          ${viaBadge}
+          ${latBadge}
         </div>
         ${obsLine}
         <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-top:10px">
@@ -3726,11 +4782,22 @@ async function addProcedimento() {
   const sigEl  = document.getElementById('novoProcSigtap');
   const tusEl  = document.getElementById('novoProcTuss');
   const obsEl  = document.getElementById('novoProcObs');
+  // v19: novos campos clínicos
+  const espEl  = document.getElementById('novoProcEspecialidade');
+  const porEl  = document.getElementById('novoProcPorte');
+  const viaEl  = document.getElementById('novoProcVia');
+  const latEl  = document.getElementById('novoProcLat');
+  const auxEl  = document.getElementById('novoProcAux');
 
   const nome   = (nomeEl.value || '').trim().toUpperCase();
   const sigtap = (sigEl.value  || '').replace(/\D/g,'').trim();
   const tuss   = (tusEl.value  || '').replace(/\D/g,'').trim();
   const obs    = (obsEl.value  || '').trim();
+  const esp    = (espEl?.value || '').trim();
+  const porte  = (porEl?.value || '').trim();
+  const via    = (viaEl?.value || '').trim();
+  const lat    = (latEl?.value || '').trim();
+  const aux    = Math.max(0, Math.min(3, parseInt(auxEl?.value || '0', 10) || 0));
 
   if (!nome)            { showProcFeedback('⚠️ Digite o nome do procedimento.', 'warn'); nomeEl.focus(); return; }
   if (nome.length < 3)  { showProcFeedback('⚠️ Nome muito curto (mínimo 3 caracteres).', 'warn'); nomeEl.focus(); return; }
@@ -3743,9 +4810,20 @@ async function addProcedimento() {
   try {
     await sbFetch('procedimentos', 'POST', {
       nome, sigtap: sigtap || null, tuss: tuss || null,
-      obs: obs || null, ativo: true
+      obs: obs || null, ativo: true,
+      especialidade: esp || null,
+      porte_anestesico: porte || null,
+      via_acesso: via || null,
+      lateralidade: lat || null,
+      auxiliares: aux,
+      origem: 'MANUAL'
     });
     nomeEl.value = ''; sigEl.value = ''; tusEl.value = ''; obsEl.value = '';
+    if (espEl) espEl.value = '';
+    if (porEl) porEl.value = '';
+    if (viaEl) viaEl.value = '';
+    if (latEl) latEl.value = '';
+    if (auxEl) auxEl.value = '0';
     showProcFeedback(`✅ Procedimento "${nome}" cadastrado.`, 'ok');
     await loadProcedimentos();   // atualiza PROCEDIMENTOS_DB e datalist
     renderProcedimentosAdmin();
@@ -3757,6 +4835,10 @@ async function addProcedimento() {
       showProcFeedback('⚠️ SIGTAP precisa ter 10 dígitos numéricos.', 'warn');
     } else if (msg.includes('tuss_format')) {
       showProcFeedback('⚠️ TUSS aceita apenas dígitos.', 'warn');
+    } else if (msg.includes('especialidade_check')) {
+      showProcFeedback('⚠️ Especialidade inválida.', 'warn');
+    } else if (msg.includes('porte_anestesico_format')) {
+      showProcFeedback('⚠️ Porte anestésico inválido.', 'warn');
     } else {
       showProcFeedback('❌ Erro ao salvar: ' + e.message, 'err');
     }
@@ -3774,6 +4856,13 @@ async function openEditarProcModal(id) {
     document.getElementById('editProcSigtap').value = p.sigtap || '';
     document.getElementById('editProcTuss').value   = p.tuss || '';
     document.getElementById('editProcObs').value    = p.obs || '';
+    // v19: novos campos
+    const setVal = (id, val) => { const e = document.getElementById(id); if (e) e.value = val || ''; };
+    setVal('editProcEspecialidade', p.especialidade);
+    setVal('editProcPorte',         p.porte_anestesico);
+    setVal('editProcVia',           p.via_acesso);
+    setVal('editProcLat',           p.lateralidade);
+    setVal('editProcAux',           (p.auxiliares ?? 0).toString());
     document.getElementById('editProcErr').style.display = 'none';
     document.getElementById('movEditarProc').classList.add('open');
   } catch(e) {
@@ -3791,6 +4880,12 @@ async function salvarEdicaoProc() {
   const sigtap = (document.getElementById('editProcSigtap').value || '').replace(/\D/g,'').trim();
   const tuss   = (document.getElementById('editProcTuss').value   || '').replace(/\D/g,'').trim();
   const obs    = (document.getElementById('editProcObs').value    || '').trim();
+  // v19: novos campos clínicos
+  const esp    = (document.getElementById('editProcEspecialidade')?.value || '').trim();
+  const porte  = (document.getElementById('editProcPorte')?.value || '').trim();
+  const via    = (document.getElementById('editProcVia')?.value   || '').trim();
+  const lat    = (document.getElementById('editProcLat')?.value   || '').trim();
+  const aux    = Math.max(0, Math.min(3, parseInt(document.getElementById('editProcAux')?.value || '0', 10) || 0));
   const err    = document.getElementById('editProcErr');
 
   const mostrarErr = (txt) => { err.textContent = txt; err.style.display = 'block'; };
@@ -3804,6 +4899,11 @@ async function salvarEdicaoProc() {
     await sbFetch('procedimentos?id=eq.' + id, 'PATCH', {
       nome, sigtap: sigtap || null, tuss: tuss || null,
       obs: obs || null,
+      especialidade: esp || null,
+      porte_anestesico: porte || null,
+      via_acesso: via || null,
+      lateralidade: lat || null,
+      auxiliares: aux,
       atualizado_em: new Date().toISOString()
     });
     closeEditarProcModal();
@@ -3814,6 +4914,10 @@ async function salvarEdicaoProc() {
     const msg = (e.message || '').toLowerCase();
     if (msg.includes('duplicate') || msg.includes('unique')) {
       mostrarErr('Já existe outro procedimento com esse nome.');
+    } else if (msg.includes('especialidade_check')) {
+      mostrarErr('Especialidade inválida.');
+    } else if (msg.includes('porte_anestesico_format')) {
+      mostrarErr('Porte anestésico inválido.');
     } else {
       mostrarErr('Erro ao salvar: ' + e.message);
     }
@@ -4010,6 +5114,8 @@ async function initMedico() {
   await loadProcedimentos();
   populateHospitalSelects();
   popularSelectsEquipe();
+  // v19: typeahead server-side no input de procedimento do formulário principal
+  ativarTypeaheadProc('fProcedimento', { sigtap: 'fSigtap', tuss: 'fTuss' });
   await loadRecords();
   renderRecent();
   checkNewBadge();
@@ -4028,6 +5134,16 @@ async function submitForm() {
   // v17: submitForm com participação + equipe + detecção de duplicata
   // ═══════════════════════════════════════════════════════════════════
 
+  // v19: captura nome digitado em "Outro" — ignorado se select não estiver em __outro__
+  const getOutro = (selId, inpId) => {
+    const sel = document.getElementById(selId);
+    const inp = document.getElementById(inpId);
+    if (sel && sel.value === '__outro__') {
+      return (inp?.value || '').trim().toUpperCase();
+    }
+    return '';
+  };
+
   const dados = {
     data: document.getElementById('fData').value,
     paciente: document.getElementById('fPaciente').value.trim().toUpperCase(),
@@ -4043,8 +5159,28 @@ async function submitForm() {
       cirurgiao:   document.getElementById('fEqCirurgiao')?.value   || '',
       aux1:        document.getElementById('fEqAux1')?.value        || '',
       aux2:        document.getElementById('fEqAux2')?.value        || '',
+    },
+    // v19: participantes externos (nome digitado manualmente — não viram registro separado,
+    // apenas aparecem na observação do próprio registro de quem lançou)
+    equipeExterna: {
+      anestesista: getOutro('fEqAnestesista','fEqAnestesistaOutro'),
+      cirurgiao:   getOutro('fEqCirurgiao',  'fEqCirurgiaoOutro'),
+      aux1:        getOutro('fEqAux1',       'fEqAux1Outro'),
+      aux2:        getOutro('fEqAux2',       'fEqAux2Outro'),
     }
   };
+
+  // Se escolheu "Outro" mas não digitou o nome, avisa
+  const faltouNomeExterno = Object.entries(dados.equipe)
+    .some(([papel, val]) => val === '__outro__' && !dados.equipeExterna[papel]);
+  if (faltouNomeExterno) {
+    alert('Você escolheu "Outro" em algum campo da equipe — digite o nome do médico externo.');
+    return;
+  }
+  // "Outro" vira string vazia depois da validação pra não virar medicoId
+  for (const k of ['anestesista','cirurgiao','aux1','aux2']) {
+    if (dados.equipe[k] === '__outro__') dados.equipe[k] = '';
+  }
 
   if (!dados.data || !dados.paciente || !dados.procedimento || !dados.convenio || !dados.hospital) {
     alert('Preencha: Data, Paciente, Procedimento, Convênio e Hospital.'); return;
@@ -4242,7 +5378,7 @@ async function salvarRegistroComEquipe(dados, equipeIdExistente) {
   const btn = document.getElementById('btnSubmit');
   btn.disabled = true; btn.textContent = '⏳ Registrando...';
 
-  // Monta lista de participantes a criar
+  // Monta lista de participantes a criar (apenas os cadastrados no sistema)
   const participantes = [
     { medicoId: currentProfile, papel: dados.minhaParticipacao },
   ];
@@ -4259,8 +5395,21 @@ async function salvarRegistroComEquipe(dados, equipeIdExistente) {
     participantes.push({ medicoId: dados.equipe.aux2, papel: '2º AUXILIAR' });
   }
 
+  // v19: monta rótulos dos externos — serão anexados à observação de todos
+  // os registros da equipe (útil pro faturamento saber quem mais participou).
+  const ext = dados.equipeExterna || {};
+  const rotulosExternos = [
+    ext.cirurgiao   ? `CIRURGIÃO externo: ${ext.cirurgiao}`     : null,
+    ext.anestesista ? `ANESTESISTA externo: ${ext.anestesista}` : null,
+    ext.aux1        ? `1º AUX externo: ${ext.aux1}`             : null,
+    ext.aux2        ? `2º AUX externo: ${ext.aux2}`             : null,
+  ].filter(Boolean);
+  const sufixoEquipeExt = rotulosExternos.length
+    ? ' [Equipe externa — ' + rotulosExternos.join(' · ') + ']'
+    : '';
+
   // Define equipeId: existente, novo (se há múltiplos participantes), ou null
-  const equipeId = equipeIdExistente || (participantes.length > 1 ? gerarUUID() : null);
+  const equipeId = equipeIdExistente || (participantes.length > 1 || rotulosExternos.length ? gerarUUID() : null);
 
   // Cria cada registro
   let contadorSalvos = 0;
@@ -4276,7 +5425,7 @@ async function salvarRegistroComEquipe(dados, equipeIdExistente) {
       status: selSt,
       valorPago: '',
       valorEstimado: '',
-      obs: dados.obs,
+      obs: (dados.obs || '') + sufixoEquipeExt,
       isNew: true,
       medicoId: p.medicoId,
       participacao: p.papel,
@@ -4286,9 +5435,24 @@ async function salvarRegistroComEquipe(dados, equipeIdExistente) {
     if (p.medicoId === currentProfile) {
       records.unshift(rec);
       await saveRecord_sb(rec, 0);
+      // v20: audit log de criação
+      if (rec._id) {
+        await logAuditoria({
+          registroId: rec._id, tipo: 'CRIACAO',
+          comentario: `Registro criado · ${p.papel}` + (equipeId ? ` · equipeId ${equipeId.slice(0,8)}` : '')
+        });
+      }
     } else {
       // Para outros médicos, salva direto no banco sem adicionar em records local
-      await saveRecord_sb_externo(rec);
+      const criado = await saveRecord_sb_externo(rec);
+      // v20: audit log pra registros de outros participantes
+      const idCriado = (criado && criado[0] && criado[0].id) || null;
+      if (idCriado) {
+        await logAuditoria({
+          registroId: idCriado, tipo: 'CRIACAO',
+          comentario: `Registro criado via equipe · ${p.papel}` + (equipeId ? ` · equipeId ${equipeId.slice(0,8)}` : '')
+        });
+      }
     }
     contadorSalvos++;
   }
@@ -4311,6 +5475,10 @@ async function salvarRegistroComEquipe(dados, equipeIdExistente) {
   ['fEqAnestesista','fEqCirurgiao','fEqAux1','fEqAux2'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
+  // v19: limpa inputs de "Outro" também
+  ['fEqAnestesistaOutro','fEqCirurgiaoOutro','fEqAux1Outro','fEqAux2Outro'].forEach(id => {
+    const el = document.getElementById(id); if (el) { el.value = ''; el.style.display = 'none'; }
+  });
   document.getElementById('fData').value = TODAY.toISOString().split('T')[0];
   btn.disabled = false; btn.textContent = '➤  Registrar Procedimento';
   renderRecent();
@@ -4318,6 +5486,7 @@ async function salvarRegistroComEquipe(dados, equipeIdExistente) {
 }
 
 // Salva um registro pertencente a OUTRO médico (criado como parte de equipe)
+// v20: retorna a resposta do Supabase (array com [id]) pra permitir audit log
 async function saveRecord_sb_externo(rec) {
   const row = {
     data: rec.data, paciente: rec.paciente, procedimento: rec.procedimento,
@@ -4332,7 +5501,7 @@ async function saveRecord_sb_externo(rec) {
     atualizado_em: new Date().toISOString()
   };
   try {
-    await sbFetch('registros', 'POST', row);
+    return await sbFetch('registros', 'POST', row);
   } catch(e) {
     // Fallback pra esquema sem colunas novas
     const msg = (e.message || '').toLowerCase();
@@ -4340,8 +5509,8 @@ async function saveRecord_sb_externo(rec) {
     if (msg.includes('equipe_id')) delete retry.equipe_id;
     if (msg.includes('participacao')) delete retry.participacao;
     if (msg.includes('tuss')) delete retry.tuss;
-    try { await sbFetch('registros', 'POST', retry); }
-    catch(e2) { console.warn('Erro ao salvar registro externo:', e2.message); }
+    try { return await sbFetch('registros', 'POST', retry); }
+    catch(e2) { console.warn('Erro ao salvar registro externo:', e2.message); return null; }
   }
 }
 
@@ -4368,11 +5537,28 @@ function popularSelectsEquipe() {
     const sel = document.getElementById(selId);
     if (!sel) continue;
     const valorAtual = sel.value;
+    // v19: adiciona opção "Outro (externo)" no final
     sel.innerHTML = '<option value="">— nenhum —</option>' +
       medicosAtivos.map(([id, u]) =>
         `<option value="${id}">${u.emoji || ''} ${u.nome}</option>`
-      ).join('');
+      ).join('') +
+      '<option value="__outro__" style="font-style:italic">✍️ Outro (digitar nome)</option>';
     sel.value = valorAtual;
+  }
+}
+
+// v19: mostra/esconde o input de texto para nome de médico externo.
+// Chamado no onchange dos selects fEqAnestesista/fEqCirurgiao/fEqAux1/fEqAux2.
+function toggleOutroEquipe(selectId, inputId) {
+  const sel = document.getElementById(selectId);
+  const inp = document.getElementById(inputId);
+  if (!sel || !inp) return;
+  if (sel.value === '__outro__') {
+    inp.style.display = 'block';
+    inp.focus();
+  } else {
+    inp.style.display = 'none';
+    inp.value = '';
   }
 }
 
@@ -4434,6 +5620,206 @@ function checkNewBadge() {
 function renderAll() {
   updateKPIs(); renderTable(); renderAlertas();
   if (document.getElementById('tp-graficos').classList.contains('act')) renderCharts();
+  if (document.getElementById('tp-central') && document.getElementById('tp-central').classList.contains('act')) renderCentral();
+  atualizarCentralBadge();
+}
+
+// ══ CENTRAL DE CONFERÊNCIA (v20) ══
+// Classifica registros em filas priorizadas pra Letícia resolver o que precisa
+// de atenção AGORA. Cada fila tem ações inline (1-2 cliques pra resolver).
+
+function _classificarFilas() {
+  const filas = {
+    pagamentoPendente: [],  // valor pago preenchido mas status != PAGO
+    glosasAntigas:     [],  // GLOSADO há +30 dias sem recurso
+    pendentesAntigos:  [],  // PENDENTE/VERIFICAR/NÃO PAGO há +60 dias
+    semCodigo:         [],  // sem SIGTAP nem TUSS
+    semValor:          [],  // sem valor pago nem estimado
+    novosAntigos:      [],  // isNew há +7 dias (esqueceu de conferir)
+  };
+
+  for (const r of records) {
+    const dias = getDias(r.data);
+    const vp = parseFloat(r.valorPago) || 0;
+    const ve = parseFloat(r.valorEstimado) || 0;
+    const st = (r.status || 'PENDENTE').toUpperCase();
+
+    if (vp > 0 && st !== 'PAGO' && st !== 'GLOSADO') {
+      filas.pagamentoPendente.push(r);
+    }
+    if (st === 'GLOSADO') {
+      const diasGlosa = r.glosaData ? Math.floor((TODAY - new Date(r.glosaData + 'T12:00')) / 86400000) : dias;
+      if (diasGlosa > 30 && (!r.glosaRecurso || r.glosaRecurso === 'SEM RECURSO')) {
+        filas.glosasAntigas.push({ ...r, _diasGlosa: diasGlosa });
+      }
+    }
+    if (['PENDENTE','VERIFICAR','NÃO PAGO'].includes(st) && dias > 60) {
+      filas.pendentesAntigos.push({ ...r, _dias: dias });
+    }
+    if (!r.sigtap && !r.tuss) {
+      filas.semCodigo.push(r);
+    }
+    if (st !== 'PAGO' && st !== 'GLOSADO' && !vp && !ve) {
+      filas.semValor.push(r);
+    }
+    if (r.isNew && dias > 7) {
+      filas.novosAntigos.push({ ...r, _dias: dias });
+    }
+  }
+
+  return filas;
+}
+
+function atualizarCentralBadge() {
+  const badge = document.getElementById('centralBadge');
+  if (!badge || currentProfile !== 'conf') return;
+  const filas = _classificarFilas();
+  const total = filas.pagamentoPendente.length + filas.glosasAntigas.length +
+                filas.pendentesAntigos.length + filas.semCodigo.length +
+                filas.semValor.length + filas.novosAntigos.length;
+  if (total > 0) {
+    badge.innerHTML = `<span style="background:rgba(248,113,113,.18);color:#f87171;border-radius:6px;padding:1px 7px;font-size:10px;margin-left:4px;font-weight:700">${total}</span>`;
+  } else {
+    badge.innerHTML = `<span style="background:rgba(74,222,128,.18);color:#4ade80;border-radius:6px;padding:1px 7px;font-size:10px;margin-left:4px;font-weight:700">✓</span>`;
+  }
+}
+
+function renderCentral() {
+  const box = document.getElementById('centralConteudo');
+  if (!box) return;
+  const filas = _classificarFilas();
+
+  const badgeMedico = (id) => {
+    const m = MEDICOS[id] || (USUARIOS_DB && USUARIOS_DB[id]) || USUARIOS[id];
+    if (!m) return `<span style="font-size:10px;color:var(--muted)">${id || '—'}</span>`;
+    return `<span style="font-size:10px;font-weight:700;color:#93c5fd">${m.emoji || ''} ${m.nome.replace('Dr. ','')}</span>`;
+  };
+
+  const dataBR = (d) => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
+  const moneyBR = (v) => {
+    const n = parseFloat(v) || 0;
+    return n ? 'R$ ' + n.toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—';
+  };
+
+  const itemCard = (r, extras = '') => {
+    const idx = records.indexOf(r);
+    return `<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <div style="font-weight:700;color:#e8f4ff;font-size:13px;margin-bottom:3px">${escapeHtml(r.paciente || '—')}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:3px">${escapeHtml(r.procedimento || '—')} · ${dataBR(r.data)} · ${escapeHtml(r.hospital || '—')}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:10px">
+          ${badgeMedico(r.medicoId)}
+          <span style="color:var(--muted)">· ${escapeHtml(r.convenio || '—')}</span>
+          ${extras}
+        </div>
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
+        <button class="pbtn" style="padding:5px 10px;font-size:11px" onclick="openDet(${idx})">👁 Abrir</button>
+        <button class="pbtn" style="padding:5px 10px;font-size:11px;color:#93c5fd" onclick="openEdit(${idx})">✏️ Editar</button>
+      </div>
+    </div>`;
+  };
+
+  const secao = (titulo, cor, icone, subtitulo, lista, acaoRapida = null) => {
+    if (!lista.length) return '';
+    return `<div style="margin-bottom:22px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <strong style="font-family:'DM Serif Display',serif;font-size:18px;color:${cor};font-weight:400">${icone} ${titulo}</strong>
+        <span style="background:${cor}22;color:${cor};font-size:11px;padding:2px 9px;border-radius:6px;font-weight:700">${lista.length}</span>
+        ${acaoRapida ? `<div style="flex:1"></div><button class="pbtn" style="padding:5px 12px;font-size:11px;color:${cor}" onclick="${acaoRapida.handler}">${acaoRapida.label}</button>` : ''}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${subtitulo}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${lista.slice(0, 15).map(r => itemCard(r)).join('')}
+        ${lista.length > 15 ? `<div style="color:var(--muted);font-size:11px;padding:6px;text-align:center">…e mais ${lista.length - 15} item(ns)</div>` : ''}
+      </div>
+    </div>`;
+  };
+
+  const total = Object.values(filas).reduce((s, arr) => s + arr.length, 0);
+
+  if (total === 0) {
+    box.innerHTML = `<div style="background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.2);border-radius:12px;padding:40px;text-align:center">
+      <div style="font-size:48px;margin-bottom:12px">✅</div>
+      <strong style="font-family:'DM Serif Display',serif;font-size:22px;color:#4ade80;font-weight:400;display:block;margin-bottom:6px">Tudo em dia</strong>
+      <p style="font-size:13px;color:var(--muted)">Nenhum item precisa da sua atenção agora. Aproveita pra descansar!</p>
+    </div>`;
+    return;
+  }
+
+  box.innerHTML = `
+    <div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="font-size:32px">🎯</div>
+      <div style="flex:1;min-width:220px">
+        <strong style="color:#e8f4ff;font-size:14px">Você tem ${total} item${total>1?'ns':''} pra conferir.</strong>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Priorizados por impacto no fechamento.</div>
+      </div>
+    </div>
+
+    ${secao(
+      'Pagamento recebido mas status não é PAGO',
+      '#4ade80', '💰',
+      'Você lançou o valor pago mas o status ainda aparece como pendente — geralmente é só marcar PAGO.',
+      filas.pagamentoPendente,
+      { label: '✔ Marcar todos como PAGO', handler: 'centralMarcarPagoEmMassa()' }
+    )}
+
+    ${secao(
+      'Glosas há mais de 30 dias sem recurso',
+      '#f87171', '⛔',
+      'Tempo rodando na sua contra. Quanto mais demora, mais difícil reverter.',
+      filas.glosasAntigas
+    )}
+
+    ${secao(
+      'Pendentes há mais de 60 dias',
+      '#fb923c', '⏰',
+      'Procedimentos que ninguém pagou nem glosou. Vale confirmar o status com o convênio/hospital.',
+      filas.pendentesAntigos
+    )}
+
+    ${secao(
+      'Sem código SIGTAP nem TUSS',
+      '#fbbf24', '🏷',
+      'Registros sem código de faturamento. Adicione pra poder exportar e enviar.',
+      filas.semCodigo
+    )}
+
+    ${secao(
+      'Sem valor pago nem estimado',
+      '#93c5fd', '💵',
+      'Sem valor previsto, fica invisível no painel financeiro. Estime ao menos um valor.',
+      filas.semValor
+    )}
+
+    ${secao(
+      'Marcados como NOVO há +7 dias',
+      '#c084fc', '🔔',
+      'Médico lançou, você ainda não conferiu. Abrir e marcar como conferido tira do radar.',
+      filas.novosAntigos
+    )}
+  `;
+}
+
+// Ação rápida: marca todos da fila "pagamento recebido" como PAGO
+async function centralMarcarPagoEmMassa() {
+  const filas = _classificarFilas();
+  const alvos = filas.pagamentoPendente;
+  if (!alvos.length) return;
+  if (!confirm(`Marcar ${alvos.length} registro(s) como PAGO?\n\nSão registros que já têm valor pago preenchido.`)) return;
+  let ok = 0;
+  for (const r of alvos) {
+    const antigo = r.status;
+    r.status = 'PAGO';
+    try {
+      await saveRecord_sb(r, records.indexOf(r));
+      if (r._id) await logAuditoria({ registroId: r._id, tipo: 'STATUS', campo: 'status', antigo, novo: 'PAGO', comentario: 'Central: marcado PAGO em lote (valor já recebido)' });
+      ok++;
+    } catch(e) { console.warn(e); }
+  }
+  renderAll();
+  renderCentral();
+  alert(`${ok} registro(s) marcado(s) como PAGO.`);
 }
 
 function getDias(d) {
@@ -4570,7 +5956,8 @@ function renderTable() {
     if (!m) return medicoId || '—';
     const cores = {
       maike:'#4ade80', ivan:'#60a5fa', nivan:'#fbbf24', azzi:'#c084fc',
-      cristiano:'#f87171', zolder:'#fb923c', marco:'#38bdf8', andre:'#34d399'
+      cristiano:'#f87171', zolder:'#fb923c', marco:'#38bdf8', andre:'#34d399',
+      frederico:'#a78bfa'
     };
     const cor = cores[medicoId] || '#94a3b8';
     const espec = m.especialidade ? `<span style="font-size:9px;opacity:.65;font-weight:400"> · ${m.especialidade}</span>` : '';
@@ -4597,7 +5984,10 @@ function renderTable() {
     const val=parseFloat(r.valorPago)||0;
     const est=parseFloat(r.valorEstimado)||0;
     const isNew = r.isNew ? `<span style="background:rgba(248,113,113,.15);color:#f87171;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-left:4px">NOVO</span>` : '';
+    // v20: checkbox de seleção em massa (por _id pra sobreviver a reordenações)
+    const checked = (r._id && bulkSelecionados.has(r._id)) ? 'checked' : '';
     return `<tr onclick="openDet(${idx})">
+      <td onclick="event.stopPropagation()" style="padding:6px 8px"><input type="checkbox" data-rid="${r._id || ''}" data-idx="${idx}" ${checked} onchange="toggleBulkLinha(this)" style="cursor:pointer"></td>
       <td style="color:var(--muted);font-size:11px">${r.data?new Date(r.data+'T12:00').toLocaleDateString('pt-BR'):'—'}</td>
       <td style="font-size:11px">${medBadge(r.medicoId)}${participacaoBadge(r.participacao)}</td>
       <td style="font-weight:700;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${highlight(r.paciente,q)}${isNew}</td>
@@ -4616,7 +6006,120 @@ function renderTable() {
         </div>
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="12" style="text-align:center;padding:28px;color:var(--muted)">Nenhum registro encontrado</td></tr>`;
+  }).join('') || `<tr><td colspan="13" style="text-align:center;padding:28px;color:var(--muted)">Nenhum registro encontrado</td></tr>`;
+  // v20: sincroniza barra de ações em massa
+  atualizarBulkBar();
+}
+
+// ══ AÇÕES EM MASSA NA TABELA PRINCIPAL (v20) ══
+// Seleção persistida por _id (sobrevive a reordenação, filtro, paginação).
+const bulkSelecionados = new Set();
+
+function atualizarBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  const cnt = document.getElementById('bulkCount');
+  const all = document.getElementById('bulkAll');
+  if (!bar) return;
+  const n = bulkSelecionados.size;
+  bar.style.display = n > 0 ? 'flex' : 'none';
+  if (cnt) cnt.textContent = n + (n === 1 ? ' registro selecionado' : ' registros selecionados');
+  // Checkbox "todos" reflete estado: todos marcados, nenhum, ou parcial
+  if (all) {
+    const checkboxes = document.querySelectorAll('#tBody input[type="checkbox"][data-rid]');
+    const visiveis = checkboxes.length;
+    const marcados = [...checkboxes].filter(c => c.checked).length;
+    all.checked = visiveis > 0 && marcados === visiveis;
+    all.indeterminate = marcados > 0 && marcados < visiveis;
+  }
+}
+
+function toggleBulkLinha(cb) {
+  const id = parseInt(cb.dataset.rid, 10);
+  if (!id) return;
+  if (cb.checked) bulkSelecionados.add(id);
+  else bulkSelecionados.delete(id);
+  atualizarBulkBar();
+}
+
+function toggleBulkAll(cb) {
+  const checkboxes = document.querySelectorAll('#tBody input[type="checkbox"][data-rid]');
+  checkboxes.forEach(c => {
+    const id = parseInt(c.dataset.rid, 10);
+    if (!id) return;
+    c.checked = cb.checked;
+    if (cb.checked) bulkSelecionados.add(id);
+    else bulkSelecionados.delete(id);
+  });
+  atualizarBulkBar();
+}
+
+function bulkLimparSelecao() {
+  bulkSelecionados.clear();
+  document.querySelectorAll('#tBody input[type="checkbox"][data-rid]').forEach(c => c.checked = false);
+  atualizarBulkBar();
+}
+
+function _registrosSelecionados() {
+  return records.filter(r => r._id && bulkSelecionados.has(r._id));
+}
+
+async function bulkAplicarStatus() {
+  const novoSt = document.getElementById('bulkStatus').value;
+  if (!novoSt) { alert('Escolha o status na caixa ao lado.'); return; }
+  const alvos = _registrosSelecionados();
+  if (!alvos.length) return;
+  if (!confirm(`Mudar status de ${alvos.length} registro(s) para "${novoSt}"?`)) return;
+  let ok = 0, erro = 0;
+  for (const r of alvos) {
+    const antigo = r.status;
+    r.status = novoSt;
+    try {
+      await saveRecord_sb(r, records.indexOf(r));
+      await logAuditoria({ registroId: r._id, tipo: 'STATUS', campo: 'status', antigo, novo: novoSt, comentario: 'Alteração em lote' });
+      ok++;
+    } catch (e) {
+      console.warn('Falha ao mudar status em lote:', e.message);
+      erro++;
+    }
+  }
+  bulkSelecionados.clear();
+  renderAll();
+  alert(`Status atualizado em ${ok} registro(s).` + (erro ? ` ${erro} com erro.` : ''));
+}
+
+async function bulkExcluir() {
+  const alvos = _registrosSelecionados();
+  if (!alvos.length) return;
+  if (!confirm(`EXCLUIR ${alvos.length} registro(s) definitivamente?\n\nEssa ação não pode ser desfeita.`)) return;
+  let ok = 0;
+  for (const r of alvos) {
+    const id = r._id;
+    const idx = records.indexOf(r);
+    try {
+      await logAuditoria({ registroId: id, tipo: 'EXCLUSAO', comentario: `Excluído em lote: ${r.paciente} — ${r.procedimento}` });
+      records.splice(idx, 1);
+      await deleteRecord_sb(id);
+      ok++;
+    } catch(e) { console.warn('Falha ao excluir:', e.message); }
+  }
+  bulkSelecionados.clear();
+  save();
+  renderAll();
+  alert(`${ok} registro(s) excluído(s).`);
+}
+
+function bulkExportar() {
+  const alvos = _registrosSelecionados();
+  if (!alvos.length) return;
+  // Reaproveita a função global de export XLSX só com a seleção
+  const dadosOriginais = records;
+  try {
+    window._bulkBackup = records;
+    records = alvos;
+    exportXLSX();
+  } finally {
+    records = dadosOriginais;
+  }
 }
 
 function renderAlertas() {
@@ -4736,6 +6239,8 @@ function openAddModal() {
     medSel.value = (typeof medicoFilter !== 'undefined' && medicoFilter) ? medicoFilter : '';
   }
   toggleGlosaFields();
+  // v19: ativa typeahead no input de procedimento do modal edit/add
+  ativarTypeaheadProc('mProc', { sigtap: 'mSigtap', tuss: 'mTuss' });
   document.getElementById('mov').classList.add('open');
 }
 function openEdit(idx) {
@@ -4797,18 +6302,32 @@ async function saveRecord() {
     alert('Selecione o médico para este registro.'); return;
   }
   if (editIdx !== null) {
+    // v20: snapshot do estado anterior pra audit log
+    const antes = { ...records[editIdx] };
     r._id = records[editIdx]._id;
     records[editIdx] = r;
     await saveRecord_sb(r, editIdx);
+    // Loga diff (campo a campo) na auditoria
+    await logDiffRegistro(r._id, antes, r);
   } else {
     records.unshift(r);
     await saveRecord_sb(r, 0);
+    // v20: loga criação
+    if (r._id) await logAuditoria({ registroId: r._id, tipo: 'CRIACAO', comentario: 'Registro criado pelo admin' });
   }
   save(); closeModal(); renderAll();
 }
 async function delRec(idx) {
   if (!confirm('Excluir este registro?')) return;
-  const id = records[idx]._id;
+  const rec = records[idx];
+  const id = rec._id;
+  // v20: loga exclusão antes de apagar do array
+  if (id) {
+    await logAuditoria({
+      registroId: id, tipo: 'EXCLUSAO',
+      comentario: `Excluído: ${rec.paciente || '?'} — ${rec.procedimento || '?'} em ${rec.data || '?'}`
+    });
+  }
   records.splice(idx, 1);
   await deleteRecord_sb(id);
   renderAll();
@@ -4853,13 +6372,585 @@ function openDet(idx) {
   `;
   document.getElementById('detEditBtn').onclick=()=>{ closeDet(); openEdit(idx); };
   document.getElementById('movDet').classList.add('open');
+  // v20: carrega timeline de forma assíncrona
+  renderDetTimeline(r._id);
 }
 function closeDet() { document.getElementById('movDet').classList.remove('open'); }
 function editFromDet() { closeDet(); openEdit(detIdx); }
 function delFromDet() { if(detIdx!==null)delRec(detIdx); }
 document.getElementById('movDet').onclick=e=>{ if(e.target===document.getElementById('movDet'))closeDet(); };
 
+// ══ TIMELINE DE AUDITORIA NO MODAL DETALHE (v20) ══
+async function renderDetTimeline(registroId) {
+  const box = document.getElementById('detTimelineList');
+  const counter = document.getElementById('detTimelineCount');
+  if (!box) return;
+  if (!registroId) {
+    box.innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:14px">Este registro ainda não foi salvo no banco — histórico indisponível.</div>';
+    if (counter) counter.textContent = '';
+    return;
+  }
+  box.innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:14px">Carregando...</div>';
+  const eventos = await fetchTimelineRegistro(registroId);
+  if (!eventos.length) {
+    box.innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:14px">Sem eventos ainda. Seja o primeiro a comentar!</div>';
+    if (counter) counter.textContent = '';
+    return;
+  }
+  if (counter) counter.textContent = eventos.length + (eventos.length === 1 ? ' evento' : ' eventos');
 
+  // Mapa de ícones/cores por tipo de evento
+  const tipoMap = {
+    'CRIACAO':        { icon:'✨', cor:'#4ade80', label:'Criação' },
+    'EDICAO':         { icon:'✏️', cor:'#93c5fd', label:'Alteração' },
+    'STATUS':         { icon:'🔁', cor:'#fbbf24', label:'Status' },
+    'COMENTARIO':     { icon:'💬', cor:'#c084fc', label:'Comentário' },
+    'EXCLUSAO':       { icon:'🗑', cor:'#f87171', label:'Exclusão' },
+    'IMPORT_PDF':     { icon:'📄', cor:'#38bdf8', label:'Importado do PDF' },
+    'VINCULO_EQUIPE': { icon:'🤝', cor:'#34d399', label:'Vínculo equipe' },
+    'CONFERIDO':      { icon:'✅', cor:'#4ade80', label:'Conferido' },
+    'RECURSO_GLOSA':  { icon:'📨', cor:'#fb923c', label:'Recurso' },
+  };
+
+  // Rótulo amigável por campo
+  const campoLabel = {
+    'data':'Data','paciente':'Paciente','procedimento':'Procedimento',
+    'sigtap':'SIGTAP','tuss':'TUSS','convenio':'Convênio','hospital':'Hospital',
+    'status':'Status','valorPago':'Valor pago','valorEstimado':'Valor estimado',
+    'obs':'Observação','participacao':'Participação',
+    'glosaData':'Data da glosa','glosaMotivo':'Motivo da glosa','glosaRecurso':'Recurso da glosa'
+  };
+
+  box.innerHTML = eventos.map(ev => {
+    const tm = tipoMap[ev.tipo] || { icon:'•', cor:'var(--muted)', label:ev.tipo };
+    const dt = ev.criado_em ? new Date(ev.criado_em) : null;
+    const dataBR = dt ? dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'}) : '';
+    const quem = safeHTML(ev.usuario_nome || ev.usuario_id || 'sistema');
+
+    let corpo = '';
+    if (ev.tipo === 'COMENTARIO' && ev.comentario) {
+      corpo = `<div style="color:#e8f4ff;font-size:12px;margin-top:3px;line-height:1.4">${safeHTML(ev.comentario)}</div>`;
+    } else if (ev.campo && (ev.valor_antigo || ev.valor_novo)) {
+      const label = campoLabel[ev.campo] || ev.campo;
+      corpo = `<div style="color:var(--muted);font-size:11px;margin-top:3px">
+        <strong style="color:#93c5fd">${label}:</strong>
+        <span style="text-decoration:line-through;color:var(--muted);margin-left:4px">${safeHTML(ev.valor_antigo || '—')}</span>
+        <span style="margin:0 4px">→</span>
+        <span style="color:#e8f4ff">${safeHTML(ev.valor_novo || '—')}</span>
+      </div>`;
+    } else if (ev.comentario) {
+      corpo = `<div style="color:var(--muted);font-size:11px;margin-top:3px">${safeHTML(ev.comentario)}</div>`;
+    }
+
+    return `<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid rgba(99,179,237,.06)">
+      <div style="width:24px;flex:0 0 24px;font-size:14px;text-align:center">${tm.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+          <strong style="font-size:11px;color:${tm.cor};text-transform:uppercase;letter-spacing:.5px">${tm.label}</strong>
+          <span style="font-size:10px;color:var(--muted)">${quem} · ${dataBR}</span>
+        </div>
+        ${corpo}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function adicionarComentario() {
+  if (detIdx === null || detIdx === undefined) return;
+  const r = records[detIdx];
+  if (!r) return;
+  const input = document.getElementById('detComentarioInput');
+  const texto = (input?.value || '').trim();
+  if (!texto) { input?.focus(); return; }
+  if (!r._id) {
+    alert('Registro precisa estar salvo no banco antes de receber comentários.');
+    return;
+  }
+  const btnSelector = '#movDet .pbtn-a';
+  const btn = document.querySelector(btnSelector);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  try {
+    await logAuditoria({
+      registroId: r._id,
+      tipo: 'COMENTARIO',
+      comentario: texto
+    });
+    input.value = '';
+    await renderDetTimeline(r._id);
+  } catch(e) {
+    alert('Erro ao enviar comentário: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💬 Enviar'; }
+  }
+}
+
+
+
+// ══ CONSULTAR PRINT DO HOSPITAL (v21 — OCR local com Tesseract.js) ══
+// Fluxo:
+//   1. Médico solta uma imagem (print do sistema do hospital) ou PDF
+//   2. Tesseract.js extrai o texto no próprio navegador (nada sobe pra lugar nenhum)
+//   3. Mostra texto + análise (datas, valores, possíveis pacientes/procedimentos)
+//   4. Compara com registros do próprio médico pra encontrar matches
+
+let consultaArquivoAtual = null;
+
+// Drag & drop visual
+(function setupConsultaDnD() {
+  const zona = document.getElementById('consultaDropZone');
+  if (!zona) return;
+  ['dragover','dragenter'].forEach(ev => zona.addEventListener(ev, e => {
+    e.preventDefault(); zona.style.borderColor = '#3b82f6'; zona.style.background = 'rgba(59,130,246,.08)';
+  }));
+  ['dragleave','drop'].forEach(ev => zona.addEventListener(ev, e => {
+    e.preventDefault(); zona.style.borderColor = 'rgba(99,179,237,.25)'; zona.style.background = 'rgba(15,24,44,.4)';
+  }));
+  zona.addEventListener('drop', e => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) consultaProcessarArquivo({ target: { files: [f] } });
+  });
+})();
+
+async function consultaProcessarArquivo(ev) {
+  const f = ev.target.files?.[0];
+  if (!f) return;
+  consultaArquivoAtual = f;
+
+  document.getElementById('consultaNomeArquivo').textContent = f.name;
+  document.getElementById('consultaInfoArquivo').textContent =
+    `${(f.size/1024).toFixed(1)} KB · ${f.type || 'tipo desconhecido'}`;
+
+  const img = document.getElementById('consultaPreviewImg');
+  // Preview
+  if (f.type.startsWith('image/')) {
+    img.src = URL.createObjectURL(f);
+    img.style.display = 'block';
+  } else if (f.type === 'application/pdf') {
+    // Renderiza primeira página do PDF como preview
+    try {
+      const buf = await f.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      const page = await pdf.getPage(1);
+      const vp = page.getViewport({ scale: 1.5 });
+      const canvas = document.createElement('canvas');
+      canvas.width = vp.width; canvas.height = vp.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      img.src = canvas.toDataURL('image/png');
+      img.style.display = 'block';
+      // Guarda o canvas pro OCR usar diretamente (evita re-renderizar)
+      consultaArquivoAtual._pdfCanvas = canvas;
+    } catch (e) {
+      console.warn('Falha preview PDF:', e);
+      img.style.display = 'none';
+    }
+  }
+
+  document.getElementById('consultaPreview').style.display = 'block';
+  document.getElementById('consultaProgresso').style.display = 'none';
+  document.getElementById('consultaResultado').style.display = 'none';
+}
+
+function consultaLimpar() {
+  consultaArquivoAtual = null;
+  document.getElementById('consultaFileInput').value = '';
+  document.getElementById('consultaPreview').style.display = 'none';
+  document.getElementById('consultaProgresso').style.display = 'none';
+  document.getElementById('consultaResultado').style.display = 'none';
+  document.getElementById('consultaTexto').value = '';
+}
+
+async function consultaExtrairTexto() {
+  if (!consultaArquivoAtual) return;
+  if (typeof Tesseract === 'undefined') {
+    alert('A biblioteca de OCR ainda está carregando. Tente de novo em alguns segundos.');
+    return;
+  }
+  const btn = document.getElementById('consultaBtnExtrair');
+  const progBox = document.getElementById('consultaProgresso');
+  const progTxt = document.getElementById('consultaProgressoTxt');
+  const progBar = document.getElementById('consultaProgressoBar');
+  btn.disabled = true; btn.textContent = '⏳ Processando...';
+  progBox.style.display = 'block';
+  progBar.style.width = '0%';
+  progTxt.textContent = 'Preparando OCR…';
+
+  try {
+    // Fonte da imagem: PDF já renderizado ou o arquivo direto
+    const fonte = consultaArquivoAtual._pdfCanvas || consultaArquivoAtual;
+
+    const { data } = await Tesseract.recognize(fonte, 'por', {
+      logger: m => {
+        if (m.status && progTxt) {
+          const labels = {
+            'loading tesseract core': 'Carregando OCR…',
+            'initializing tesseract': 'Inicializando…',
+            'loading language traineddata': 'Baixando português…',
+            'initializing api': 'Preparando…',
+            'recognizing text': 'Lendo texto…',
+          };
+          progTxt.textContent = labels[m.status] || m.status;
+          if (typeof m.progress === 'number') {
+            progBar.style.width = Math.round(m.progress * 100) + '%';
+          }
+        }
+      }
+    });
+    const texto = (data?.text || '').trim();
+    document.getElementById('consultaTexto').value = texto;
+    document.getElementById('consultaResultado').style.display = 'block';
+    progBox.style.display = 'none';
+    consultaAnalisarTexto(texto);
+  } catch(e) {
+    progBox.style.display = 'none';
+    alert('Erro ao ler a imagem: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔍 Extrair texto';
+  }
+}
+
+// Convênios comuns no mercado brasileiro (matching inicial — a lista
+// definitiva vem dos registros já cadastrados em populateConvFilter).
+const IMP_CONVENIOS_CONHECIDOS = [
+  'UNIMED','BRADESCO','BRADESCO SAUDE','AMIL','SUL AMERICA','NOTREDAME INTERMEDICA',
+  'NOTREDAME','HAPVIDA','CASSI','GEAP','ASSEFAZ','FUSEX','SAUDE CAIXA','PETROBRAS',
+  'MEDIAL','GOLDEN CROSS','PORTO SEGURO','CARE PLUS','PROMEDICA','SUSEP',
+  'ALLIANZ','OMINT','PREVENT SENIOR','SESC','SESI','POSTAL SAUDE','SAUDE BRADESCO',
+  'ECONOMUS','FUNDACAO CESP','FACHESF','REAL GRANDEZA','PARTICULAR','SUS'
+];
+
+// Extrai candidatos de campos a partir do texto OCR. Retorna objeto estruturado
+// com melhor palpite + lista de alternativas.
+function impExtrairCampos(texto) {
+  const textoUp = (texto || '').toUpperCase();
+
+  // ── Datas (DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, YYYY-MM-DD) ──
+  const datas = [...new Set(
+    (texto.match(/\b(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{2,4}|\d{4}[\/\-]\d{2}[\/\-]\d{2})\b/g) || [])
+  )];
+  const normalizarData = (d) => {
+    if (!d) return '';
+    const sep = d.match(/[\/\-\.]/)?.[0] || '/';
+    const p = d.split(sep).map(x => x.trim());
+    if (p[0].length === 4) return `${p[0]}-${p[1]}-${p[2]}`;
+    const ano = p[2].length === 2 ? '20' + p[2] : p[2];
+    return `${ano}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+  };
+  // Preferência: data mais próxima do ano atual (ignora datas muito antigas/futuras)
+  const ano = new Date().getFullYear();
+  const dataMelhor = datas
+    .map(d => ({ orig: d, norm: normalizarData(d) }))
+    .filter(x => {
+      const y = parseInt((x.norm || '').slice(0,4), 10);
+      return y >= ano - 2 && y <= ano + 1;
+    })
+    .sort((a,b) => b.norm.localeCompare(a.norm))[0]?.norm || normalizarData(datas[0] || '');
+
+  // ── Valores monetários ──
+  const rxVal = /R?\$?\s?(\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2}|\d+\.\d{2})/g;
+  const valoresBrutos = [...new Set((texto.match(rxVal) || []).map(v => v.replace(/R?\$/,'').trim()))];
+  const parseVal = (v) => {
+    // "1.234,56" → 1234.56 ; "1234.56" → 1234.56
+    if (v.includes(',')) return parseFloat(v.replace(/\./g,'').replace(',','.'));
+    return parseFloat(v);
+  };
+  const valorMelhor = valoresBrutos
+    .map(parseVal).filter(v => v > 0 && v < 1e7)
+    .sort((a,b) => b - a)[0] || '';
+
+  // ── Códigos ──
+  const sigtaps = [...new Set(texto.match(/\b\d{10}\b/g) || [])];
+  const tussList = [...new Set(texto.match(/\b\d{8}\b/g) || [])];
+  const sigtapMelhor = sigtaps[0] || '';
+  const tussMelhor = tussList[0] || '';
+
+  // ── Convênio: match por substring nos conhecidos + nos registros do médico ──
+  const conveniosExistentes = [...new Set(records.map(r => (r.convenio || '').toUpperCase()).filter(Boolean))];
+  const todosConv = [...new Set([...IMP_CONVENIOS_CONHECIDOS, ...conveniosExistentes])];
+  const convenioMelhor = todosConv.find(c => {
+    const k = c.split(/\s+/)[0]; // primeira palavra-chave (ex: "UNIMED")
+    return k.length >= 4 && textoUp.includes(k);
+  }) || '';
+
+  // ── Hospital: match com HOSPITAIS cadastrados ──
+  const hospitalMelhor = (HOSPITAIS || []).find(h => {
+    const k = h.split(/\s+/)[0];
+    return k.length >= 4 && textoUp.includes(k.toUpperCase());
+  }) || '';
+
+  // ── Procedimento: compara com catálogo ──
+  const procsCat = new Set();
+  if (PROCEDIMENTOS_DB) Object.keys(PROCEDIMENTOS_DB).forEach(n => procsCat.add(n));
+  Object.keys(SIGTAP_MAP || {}).forEach(n => procsCat.add(n));
+  // Score: quantas palavras do procedimento aparecem no texto
+  const procsRanqueados = [...procsCat].map(p => {
+    const palavras = p.split(/\s+/).filter(w => w.length >= 5);
+    const hits = palavras.filter(w => textoUp.includes(w)).length;
+    return { nome: p, score: hits, total: palavras.length };
+  }).filter(x => x.score >= 1)
+    .sort((a,b) => (b.score/b.total) - (a.score/a.total) || b.score - a.score);
+  const procMelhor = procsRanqueados[0]?.nome || '';
+
+  // Se o procedimento foi identificado, puxa códigos do catálogo (melhor que OCR)
+  let sigtapCat = '', tussCat = '';
+  if (procMelhor) {
+    const hit = lookupCodigos(procMelhor);
+    if (hit) { sigtapCat = hit.sigtap || ''; tussCat = hit.tuss || ''; }
+  }
+
+  // ── Possíveis nomes de paciente ──
+  // 1) Procura padrão explícito "Paciente: NOME SOBRENOME"
+  let pacienteMelhor = '';
+  const rxLabel = /(?:PACIENTE|NOME DO PACIENTE|BENEFICI[AÁ]RIO)[\s:\-]+([A-ZÁÂÃÀÉÊÍÓÔÕÚÇ][A-ZÁÂÃÀÉÊÍÓÔÕÚÇ\s]{5,60})/i;
+  const mLabel = texto.match(rxLabel);
+  if (mLabel) pacienteMelhor = mLabel[1].trim().toUpperCase().replace(/\s{2,}/g,' ');
+
+  // 2) Se não achou, pega candidatos de 2-6 palavras em maiúsculas, descarta ruído
+  const rxNomes = /\b([A-ZÁÂÃÀÉÊÍÓÔÕÚÇ]{3,}(?:\s+(?:DE|DA|DO|DAS|DOS|E|[A-ZÁÂÃÀÉÊÍÓÔÕÚÇ]{2,})){1,5})\b/g;
+  const ruido = /^(HOSPITAL|CLINICA|UNIMED|BRADESCO|AMIL|SUL AMERICA|NOTREDAME|HAPVIDA|RELATORIO|CONTA|PACIENTE|NOME|DATA|VALOR|PROCEDIMENTO|MEDICO|CIRURGIAO|ANESTESISTA|GUIA|SADT|CODIGO|TUSS|SIGTAP|CID|INTERNACAO|ITABIRITO|MARIANA|OURO PRETO|MATERNIDADE|ANO|DIA|MES|CPF|RG|SUS|PARTICULAR|OBSTETRICA|CESARIANA|COLECISTECTOMIA|APENDICECTOMIA|CARTAO|NACIONAL|ATENDIMENTO)\b/;
+  const candidatosPaciente = [...new Set((texto.match(rxNomes) || []))]
+    .filter(n => !ruido.test(n) && n.split(' ').length >= 2 && n.split(' ').length <= 6);
+  if (!pacienteMelhor && candidatosPaciente.length) pacienteMelhor = candidatosPaciente[0];
+
+  // Score de confiança: quantos campos essenciais preenchemos
+  let score = 0, maxScore = 5;
+  if (pacienteMelhor) score++;
+  if (dataMelhor)     score++;
+  if (procMelhor)     score++;
+  if (convenioMelhor) score++;
+  if (hospitalMelhor) score++;
+  const confianca = Math.round((score / maxScore) * 100);
+
+  return {
+    data: dataMelhor,
+    paciente: pacienteMelhor,
+    pacienteCandidatos: candidatosPaciente.slice(0, 6),
+    procedimento: procMelhor,
+    procCandidatos: procsRanqueados.slice(0, 5).map(x => x.nome),
+    sigtap: sigtapCat || sigtapMelhor,
+    tuss: tussCat || tussMelhor,
+    convenio: convenioMelhor,
+    hospital: hospitalMelhor,
+    valor: valorMelhor,
+    confianca,
+    datasEncontradas: datas,
+    codigos: [...sigtaps.map(c => 'SUS '+c), ...tussList.map(c => 'ANS '+c)]
+  };
+}
+
+// Preenche o formulário de importação com o melhor palpite da IA.
+function impPreencherFormulario(extraido) {
+  const hoje = TODAY.toISOString().split('T')[0];
+  document.getElementById('impData').value = extraido.data || hoje;
+  document.getElementById('impPaciente').value = extraido.paciente || '';
+  document.getElementById('impProcedimento').value = extraido.procedimento || '';
+  document.getElementById('impSigtap').value = extraido.sigtap || '';
+  document.getElementById('impTuss').value = extraido.tuss || '';
+  document.getElementById('impConvenio').value = extraido.convenio || '';
+  document.getElementById('impValor').value = extraido.valor || '';
+  document.getElementById('impObs').value = `Importado via print do hospital em ${new Date().toLocaleDateString('pt-BR')}`;
+
+  // Popula dropdown de hospitais + pré-seleciona
+  const hospSel = document.getElementById('impHospital');
+  hospSel.innerHTML = '<option value="">—</option>' +
+    (HOSPITAIS || []).map(h => `<option value="${h}">${h}</option>`).join('') +
+    '<option value="OUTRO">OUTRO</option>';
+  if (extraido.hospital) hospSel.value = extraido.hospital;
+
+  // Badge de confiança (verde >= 80, amarelo 50-80, vermelho < 50)
+  const badge = document.getElementById('impConfianca');
+  const c = extraido.confianca || 0;
+  const cor = c >= 80 ? '#4ade80' : c >= 50 ? '#fbbf24' : '#f87171';
+  badge.style.background = cor + '22';
+  badge.style.color = cor;
+  badge.textContent = c + '% identificado';
+
+  // Mostra candidatos alternativos de paciente se houver
+  const cand = document.getElementById('impPacienteCandidatos');
+  if (extraido.pacienteCandidatos && extraido.pacienteCandidatos.length > 1) {
+    cand.innerHTML = 'Outras opções detectadas: ' +
+      extraido.pacienteCandidatos.slice(0, 5).map(n =>
+        `<a href="#" onclick="event.preventDefault();document.getElementById('impPaciente').value='${n.replace(/'/g,"\\'")}';" style="color:#93c5fd;text-decoration:underline;margin:0 3px">${escapeHtml(n)}</a>`
+      ).join(' · ');
+  } else { cand.innerHTML = ''; }
+
+  // Análise bruta pra transparência dentro do <details>
+  const analise = document.getElementById('consultaAnalise');
+  const mkTag = (l, v, cor) => v ? `<span style="color:var(--muted);font-size:10px;margin-right:6px">${l}:</span><span style="background:${cor}15;color:${cor};font-size:10px;padding:1px 6px;border-radius:4px;margin-right:8px;font-weight:600">${escapeHtml(String(v))}</span>` : '';
+  analise.innerHTML = [
+    mkTag('📅 Datas encontradas', (extraido.datasEncontradas || []).join(', '), '#93c5fd'),
+    mkTag('💰 Valor', extraido.valor, '#4ade80'),
+    mkTag('🏷 Códigos', (extraido.codigos || []).join(', '), '#fbbf24'),
+    mkTag('🔬 Procedimentos alternativos', (extraido.procCandidatos || []).slice(1).join(', '), '#fb923c'),
+  ].filter(Boolean).join(' ');
+
+  // Verifica duplicata (mesmo paciente + mesma data + procedimento similar)
+  impChecarDuplicata(extraido);
+}
+
+function impChecarDuplicata(extraido) {
+  const box = document.getElementById('impDuplicata');
+  const txt = document.getElementById('impDuplicataTxt');
+  if (!box) return;
+  if (!extraido.paciente || !extraido.data) { box.style.display = 'none'; return; }
+  const dup = records.find(r =>
+    r.medicoId === currentProfile &&
+    r.data === extraido.data &&
+    (r.paciente || '').toUpperCase() === extraido.paciente.toUpperCase()
+  );
+  if (dup) {
+    box.style.display = 'block';
+    txt.innerHTML = `Você já tem um registro de <strong>${escapeHtml(dup.paciente)}</strong> em <strong>${new Date(dup.data+'T12:00').toLocaleDateString('pt-BR')}</strong> (${escapeHtml(dup.procedimento || '')}). Se não for duplicata, pode registrar mesmo assim.`;
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+// Rerun parsing on the current text (when user edits the textarea)
+function consultaReinterpretar() {
+  const texto = document.getElementById('consultaTexto').value;
+  if (!texto) return;
+  const ext = impExtrairCampos(texto);
+  impPreencherFormulario(ext);
+}
+
+// Análise inteligente (compat com flow antigo): agora chama impExtrairCampos e preenche form.
+function consultaAnalisarTexto(texto) {
+  if (!texto) return;
+  const extraido = impExtrairCampos(texto);
+  impPreencherFormulario(extraido);
+  // Continua mostrando matches com registros do próprio médico
+  consultaBuscarMatches(texto, extraido.datasEncontradas || [], extraido.pacienteCandidatos || []);
+}
+
+// Cria o registro como produção do médico logado (usando o mesmo fluxo do submitForm)
+async function importarComoRegistro() {
+  const fb = document.getElementById('impFeedback');
+  const mostrarFb = (txt, tipo) => {
+    const cores = {
+      ok:   'background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);color:#4ade80',
+      warn: 'background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);color:#fbbf24',
+      err:  'background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:#f87171',
+    };
+    fb.style.cssText = 'display:block;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;margin-top:12px;' + (cores[tipo] || cores.ok);
+    fb.textContent = txt;
+  };
+
+  const data = document.getElementById('impData').value;
+  const paciente = document.getElementById('impPaciente').value.trim().toUpperCase();
+  const procedimento = document.getElementById('impProcedimento').value.trim().toUpperCase();
+  const sigtap = (document.getElementById('impSigtap').value || '').replace(/\D/g,'').trim();
+  const tuss = (document.getElementById('impTuss').value || '').replace(/\D/g,'').trim();
+  const convenio = document.getElementById('impConvenio').value.trim().toUpperCase();
+  const hospital = document.getElementById('impHospital').value;
+  const participacao = document.getElementById('impParticipacao').value;
+  const obs = document.getElementById('impObs').value.trim();
+  const valorEstimado = document.getElementById('impValor').value;
+
+  if (!data || !paciente || !procedimento || !convenio || !hospital) {
+    mostrarFb('⚠️ Preencha ao menos: Data, Paciente, Procedimento, Convênio e Hospital.', 'warn');
+    return;
+  }
+  if (sigtap && sigtap.length !== 10) {
+    mostrarFb('⚠️ Código SIGTAP deve ter 10 dígitos ou ficar em branco.', 'warn');
+    return;
+  }
+
+  // Monta o registro e salva via saveRecord_sb (mesmo caminho do registro manual)
+  const rec = {
+    data, paciente, procedimento, sigtap, tuss,
+    convenio, hospital,
+    status: 'PENDENTE',
+    valorPago: '',
+    valorEstimado: valorEstimado || '',
+    obs,
+    isNew: true,
+    medicoId: currentProfile,
+    participacao,
+    equipeId: null,
+  };
+
+  try {
+    records.unshift(rec);
+    await saveRecord_sb(rec, 0);
+    if (rec._id) {
+      await logAuditoria({
+        registroId: rec._id,
+        tipo: 'IMPORT_PDF',
+        comentario: `Importado via print do hospital · ${participacao}`
+      });
+    }
+    save();
+    renderRecent && renderRecent();
+    mostrarFb('✅ Registro criado com sucesso! Você pode ver em "Minha Produção".', 'ok');
+    setTimeout(() => { consultaLimpar(); }, 1800);
+  } catch(e) {
+    mostrarFb('❌ Erro ao salvar: ' + e.message, 'err');
+  }
+}
+
+// Procura registros do médico atual que batem com datas/nomes extraídos.
+function consultaBuscarMatches(texto, datas = [], nomes = []) {
+  const meusReg = records.filter(r => r.medicoId === currentProfile);
+  if (!meusReg.length) {
+    document.getElementById('consultaMatches').style.display = 'none';
+    return;
+  }
+
+  const datasNorm = datas.map(d => {
+    // Normaliza pra YYYY-MM-DD
+    const parts = d.split(/[\/\-]/);
+    if (parts[0].length === 4) return `${parts[0]}-${parts[1]}-${parts[2]}`;
+    const ano = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+    return `${ano}-${parts[1]}-${parts[0]}`;
+  });
+
+  const textoUp = texto.toUpperCase();
+  const matches = meusReg.filter(r => {
+    const dataBate = datasNorm.includes(r.data);
+    const pacienteBate = r.paciente && textoUp.includes(r.paciente.toUpperCase());
+    return dataBate || pacienteBate;
+  }).slice(0, 10);
+
+  const box = document.getElementById('consultaMatches');
+  const lista = document.getElementById('consultaMatchesList');
+  if (!matches.length) { box.style.display = 'none'; return; }
+
+  box.style.display = 'block';
+  lista.innerHTML = matches.map(r => {
+    const idx = records.indexOf(r);
+    const dataBR = r.data ? new Date(r.data+'T12:00').toLocaleDateString('pt-BR') : '—';
+    const val = parseFloat(r.valorPago) || 0;
+    const stColor = r.status === 'PAGO' ? '#4ade80' : r.status === 'GLOSADO' ? '#f87171' : '#fbbf24';
+    return `<div style="background:rgba(15,24,44,.5);border:1px solid rgba(74,222,128,.15);border-radius:9px;padding:10px 12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:180px">
+        <div style="font-weight:700;color:#e8f4ff;font-size:12px">${escapeHtml(r.paciente || '—')}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${escapeHtml(r.procedimento || '—')} · ${dataBR}</div>
+      </div>
+      <span style="font-size:10px;font-weight:700;color:${stColor};background:${stColor}15;padding:2px 8px;border-radius:5px">${r.status || 'PENDENTE'}</span>
+      <span style="font-size:11px;color:#e8f4ff;font-weight:600">${val ? 'R$ '+val.toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</span>
+      <button class="pbtn" style="padding:5px 10px;font-size:10px" onclick="openDet(${idx})">👁 Abrir</button>
+    </div>`;
+  }).join('');
+}
+
+// Copia o texto extraído pro clipboard
+async function consultaCopiarTexto() {
+  const t = document.getElementById('consultaTexto').value;
+  if (!t) return;
+  try { await navigator.clipboard.writeText(t); alert('✅ Texto copiado!'); }
+  catch(e) { alert('Falha ao copiar. Selecione manualmente (Ctrl+A, Ctrl+C).'); }
+}
+
+// Busca trechos do texto extraído direto na tabela de registros do médico
+function consultaBuscarNoSistema() {
+  const t = (document.getElementById('consultaTexto').value || '').trim();
+  if (!t) return;
+  // Pega primeira linha não vazia como termo de busca
+  const linha = t.split(/\n/).map(s => s.trim()).filter(Boolean)[0];
+  if (!linha) return;
+  alert(`Vou buscar "${linha.slice(0,60)}..." nos seus registros.\n\nA gente pode melhorar isso em breve: integrar direto com a busca da produção.`);
+  // TODO v22: integrar com busca da aba produção
+}
 
 // ══ GRÁFICOS ══
 function renderCharts() {
