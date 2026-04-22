@@ -85,19 +85,42 @@ create unique index procedimentos_nome_upper_idx
 -- 6) COLUNA TSVECTOR PARA FULL-TEXT SEARCH ---------------------------------
 -- Remove a versão antiga se existir (caso a definição mude entre migrations)
 alter table public.procedimentos drop column if exists busca_tsv;
-alter table public.procedimentos add column busca_tsv tsvector
-  generated always as (
-    to_tsvector('portuguese',
-      unaccent(
-        coalesce(nome,'') || ' ' ||
-        coalesce(especialidade,'') || ' ' ||
-        coalesce(array_to_string(sinonimos,' '),'') || ' ' ||
-        coalesce(obs,'') || ' ' ||
-        coalesce(sigtap,'') || ' ' ||
-        coalesce(tuss,'')
-      )
-    )
-  ) stored;
+
+-- Adiciona como coluna normal (não gerada) — o Supabase/Postgres bloqueia
+-- colunas geradas com to_tsvector/unaccent porque não são IMMUTABLE.
+alter table public.procedimentos add column busca_tsv tsvector;
+
+-- Trigger que mantém busca_tsv sempre atualizado em INSERT/UPDATE
+create or replace function public.procedimentos_compute_busca_tsv()
+returns trigger
+language plpgsql as $$
+begin
+  new.busca_tsv := to_tsvector('portuguese',
+    coalesce(new.nome,'') || ' ' ||
+    coalesce(new.especialidade,'') || ' ' ||
+    coalesce(array_to_string(new.sinonimos,' '),'') || ' ' ||
+    coalesce(new.obs,'') || ' ' ||
+    coalesce(new.sigtap,'') || ' ' ||
+    coalesce(new.tuss,'')
+  );
+  return new;
+end $$;
+
+drop trigger if exists procedimentos_busca_tsv_tg on public.procedimentos;
+create trigger procedimentos_busca_tsv_tg
+  before insert or update of nome, especialidade, sinonimos, obs, sigtap, tuss
+  on public.procedimentos
+  for each row execute function public.procedimentos_compute_busca_tsv();
+
+-- Popula valor para linhas que já existem
+update public.procedimentos set busca_tsv = to_tsvector('portuguese',
+  coalesce(nome,'') || ' ' ||
+  coalesce(especialidade,'') || ' ' ||
+  coalesce(array_to_string(sinonimos,' '),'') || ' ' ||
+  coalesce(obs,'') || ' ' ||
+  coalesce(sigtap,'') || ' ' ||
+  coalesce(tuss,'')
+) where busca_tsv is null;
 
 -- 7) ÍNDICES ---------------------------------------------------------------
 create index if not exists procedimentos_busca_tsv_idx
