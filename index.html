@@ -22,6 +22,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>CUME</title>
+<!-- v23: edição pelo médico (campos leves + trava em PENDENTE) + ordenação criado_em desc nas telas do médico + notificação automática no chat -->
 <!-- v22: PWA — instalável em celular, abre como app, ícone na home -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#3b82f6">
@@ -3241,12 +3242,17 @@ async function logDiffRegistro(registroId, antes, depois) {
     'status','valorPago','valorEstimado','obs','participacao',
     'glosaData','glosaMotivo','glosaRecurso'
   ];
+  // v23: distingue edição feita pelo médico vs auditoria, pra filtrar na timeline
+  const ehMedico = isMedico(currentProfile);
   for (const c of campos) {
     const a = antes[c] == null ? '' : String(antes[c]);
     const d = depois[c] == null ? '' : String(depois[c]);
     if (a !== d) {
       // Status vira tipo próprio pra destacar na timeline
-      const tipo = (c === 'status') ? 'STATUS' : 'EDICAO';
+      let tipo;
+      if (c === 'status')      tipo = 'STATUS';
+      else if (ehMedico)       tipo = 'EDICAO_MEDICO';
+      else                     tipo = 'EDICAO';
       await logAuditoria({ registroId, tipo, campo: c, antigo: a, novo: d });
     }
   }
@@ -3366,8 +3372,17 @@ async function loadRecords() {
   try {
     let allRows = [];
     if (isMedico(currentProfile)) {
-      // Médico carrega só os próprios
-      const rows = await sbFetch(`registros?medico_id=eq.${currentProfile}&order=data.desc&limit=5000`);
+      // v23: médico ordena por criado_em.desc (último lançamento primeiro).
+      // Fallback pra data.desc se a coluna criado_em ainda não existir no banco.
+      let rows;
+      try {
+        rows = await sbFetch(`registros?medico_id=eq.${currentProfile}&order=criado_em.desc&limit=5000`);
+      } catch (e) {
+        if ((e.message || '').toLowerCase().includes('criado_em')) {
+          console.warn('[CUME] criado_em não existe — rode migration_v23.sql. Caindo pra data.desc.');
+          rows = await sbFetch(`registros?medico_id=eq.${currentProfile}&order=data.desc&limit=5000`);
+        } else { throw e; }
+      }
       allRows = rows || [];
     } else {
       // Conferência carrega TODOS com paginação
@@ -3404,6 +3419,7 @@ async function loadRecords() {
         glosaRecurso: r.glosa_recurso || '',
         participacao: r.participacao  || '',
         equipeId:     r.equipe_id     || null,
+        criadoEm:     r.criado_em     || r.atualizado_em || null, // v23
       }));
       setSyncStatus('ok', `${records.length} registros`);
     } else {
@@ -3469,10 +3485,17 @@ async function saveRecord_sb(rec, idx) {
   // Helper: tenta salvar, removendo um campo se ele for rejeitado pelo schema
   const tentarSalvar = async (payload) => {
     if (rec._id) {
-      return await sbFetch('registros?id=eq.' + rec._id, 'PATCH', payload);
+      // PATCH: não envia criado_em (preserva original do banco)
+      const { criado_em, ...semCriado } = payload;
+      return await sbFetch('registros?id=eq.' + rec._id, 'PATCH', semCriado);
     } else {
+      // POST: envia criado_em junto (se vier) — Supabase usa default now() se omitido
       const res = await sbFetch('registros', 'POST', payload);
-      if (res && res[0]) records[idx]._id = res[0].id;
+      if (res && res[0]) {
+        records[idx]._id = res[0].id;
+        // v23: guarda criado_em do banco no objeto local pra ordenação imediata
+        if (res[0].criado_em) records[idx].criadoEm = res[0].criado_em;
+      }
       return res;
     }
   };
@@ -3487,6 +3510,8 @@ async function saveRecord_sb(rec, idx) {
     if (msg.includes('equipe_id')) { delete retry.equipe_id; removidos.push('equipe_id'); }
     if (msg.includes('participacao')) { delete retry.participacao; removidos.push('participacao'); }
     if (msg.includes('tuss')) { delete retry.tuss; removidos.push('tuss'); }
+    // v23: criado_em ainda não existe? Remove e tenta de novo (banco usará default ou nada)
+    if (msg.includes('criado_em')) { delete retry.criado_em; removidos.push('criado_em (rode migration_v23.sql)'); }
 
     if (removidos.length > 0) {
       console.warn(`[CUME] Colunas ausentes no Supabase (${removidos.join(', ')}); rode os SETUP_SUPABASE SQLs pendentes.`);
@@ -6263,10 +6288,17 @@ function openAddModal() {
   toggleGlosaFields();
   // v19: ativa typeahead no input de procedimento do modal edit/add
   ativarTypeaheadProc('mProc', { sigtap: 'mSigtap', tuss: 'mTuss' });
+  // v23: criação é sempre livre (mesmo pra médico) — limpa qualquer trava de edição anterior
+  aplicarRestricoesEdicaoMedico();
   document.getElementById('mov').classList.add('open');
 }
 function openEdit(idx) {
   editIdx=idx; const r=records[idx];
+  // v23: trava de edição pra médico — só PENDENTE pode ser editado por ele
+  if (isMedico(currentProfile) && (r.status || 'PENDENTE').toUpperCase() !== 'PENDENTE') {
+    alert('Só registros com status PENDENTE podem ser editados.\n\nEste já foi processado pela auditoria. Se precisa corrigir algo, use o chat com a Letícia.');
+    return;
+  }
   document.getElementById('mtitle').textContent='✏️ Editar Registro';
   document.getElementById('mData').value=r.data||'';
   document.getElementById('mPac').value=r.paciente||'';
@@ -6288,7 +6320,43 @@ function openEdit(idx) {
   const medSel = document.getElementById('mMedico');
   if (medSel && currentProfile === 'conf') medSel.value = r.medicoId || '';
   toggleGlosaFields();
+  // v23: aplica restrições visuais se for médico (trava todos os campos exceto leves)
+  aplicarRestricoesEdicaoMedico();
   document.getElementById('mov').classList.add('open');
+}
+
+// v23: aplica/remove restrições no modal conforme o perfil.
+// Médico só edita: paciente, procedimento, convênio, observações.
+// Demais campos ficam visualmente travados (disabled). Botão "Salvar" continua ativo.
+function aplicarRestricoesEdicaoMedico() {
+  const camposLiberados = new Set(['mPac','mProc','mConv','mObs']);
+  const todosCampos = [
+    'mData','mPac','mProc','mSigtap','mTuss','mConv','mHosp','mSt',
+    'mVal','mEst','mObs','mGlosaData','mGlosaMotivo','mGlosaRecurso',
+    'mParticipacao','mMedico'
+  ];
+  const restringir = isMedico(currentProfile) && editIdx !== null;
+  todosCampos.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const liberado = camposLiberados.has(id);
+    if (restringir && !liberado) {
+      el.disabled = true;
+      el.style.opacity = '0.55';
+      el.style.cursor = 'not-allowed';
+      el.title = 'Apenas a auditoria pode alterar este campo';
+    } else {
+      el.disabled = false;
+      el.style.opacity = '';
+      el.style.cursor = '';
+      el.title = '';
+    }
+  });
+  // Avisa visualmente no título do modal o que o médico pode fazer
+  const titulo = document.getElementById('mtitle');
+  if (restringir && titulo) {
+    titulo.innerHTML = '✏️ Editar Registro <span style="font-size:11px;color:var(--muted);font-weight:400;display:block;margin-top:4px">Você pode editar: paciente, procedimento, convênio e observações</span>';
+  }
 }
 async function saveRecord() {
   const st = document.getElementById('mSt').value;
@@ -6326,11 +6394,39 @@ async function saveRecord() {
   if (editIdx !== null) {
     // v20: snapshot do estado anterior pra audit log
     const antes = { ...records[editIdx] };
+
+    // v23: BLINDAGEM — se médico está editando, força preservação dos campos restritos.
+    // Isso impede burla via console (campos estão disabled na UI, mas no submit garantimos).
+    if (isMedico(currentProfile)) {
+      // Trava: só PENDENTE pode ser editado por médico
+      if ((antes.status || 'PENDENTE').toUpperCase() !== 'PENDENTE') {
+        alert('Este registro não está mais PENDENTE — edição bloqueada.');
+        return;
+      }
+      // Preserva campos que médico não pode alterar
+      r.data           = antes.data;
+      r.sigtap         = antes.sigtap;
+      r.tuss           = antes.tuss;
+      r.hospital       = antes.hospital;
+      r.status         = antes.status;
+      r.valorPago      = antes.valorPago;
+      r.valorEstimado  = antes.valorEstimado;
+      r.glosaData      = antes.glosaData;
+      r.glosaMotivo    = antes.glosaMotivo;
+      r.glosaRecurso   = antes.glosaRecurso;
+      r.participacao   = antes.participacao;
+      r.medicoId       = antes.medicoId; // nunca pode mudar de dono
+    }
+
     r._id = records[editIdx]._id;
     records[editIdx] = r;
     await saveRecord_sb(r, editIdx);
     // Loga diff (campo a campo) na auditoria
     await logDiffRegistro(r._id, antes, r);
+    // v23: se foi o médico que editou, notifica Letícia no chat com o resumo do que mudou
+    if (isMedico(currentProfile) && r._id) {
+      await notificarEdicaoMedicoNoChat(antes, r);
+    }
   } else {
     records.unshift(r);
     await saveRecord_sb(r, 0);
@@ -7588,6 +7684,46 @@ async function renderChat(containerId, viewerProfile) {
   const statusId = viewerProfile === 'medico' ? 'medChatStatus' : 'confChatStatus';
   const statusEl = document.getElementById(statusId);
   if (statusEl) statusEl.textContent = `${msgs.length} mensagem${msgs.length!==1?'s':''}`;
+}
+
+// v23: notifica Letícia (perfil 'conf') no chat sempre que o médico editar
+// um registro próprio. Dispara uma mensagem do médico → conf com o resumo
+// do diff (só campos que o médico pode mexer: paciente/procedimento/convênio/obs).
+async function notificarEdicaoMedicoNoChat(antes, depois) {
+  const camposLeves = [
+    { k: 'paciente',     label: 'Paciente'     },
+    { k: 'procedimento', label: 'Procedimento' },
+    { k: 'convenio',     label: 'Convênio'     },
+    { k: 'obs',          label: 'Observações'  },
+  ];
+  const mudancas = [];
+  for (const c of camposLeves) {
+    const a = (antes[c.k] || '').toString().trim();
+    const d = (depois[c.k] || '').toString().trim();
+    if (a !== d) mudancas.push(`${c.label}: "${a || '—'}" → "${d || '—'}"`);
+  }
+  if (!mudancas.length) return; // nada relevante mudou, não polui o chat
+
+  const u = getUsuario(currentProfile) || {};
+  const nome = (u.nome || currentProfile || 'Médico').replace(/^Dr\.?\s*/, '');
+  const dataBR = depois.data
+    ? new Date(depois.data + 'T12:00').toLocaleDateString('pt-BR')
+    : '—';
+  const texto =
+    `🔔 *${nome}* editou o registro de *${depois.paciente || '—'}* (${dataBR}):\n` +
+    mudancas.map(m => '• ' + m).join('\n');
+
+  try {
+    await sbFetch('mensagens', 'POST', {
+      de: currentProfile,
+      para: 'conf',
+      texto,
+      lida: false,
+      medico_id: currentProfile
+    });
+  } catch (e) {
+    console.warn('[CUME] notificarEdicaoMedicoNoChat falhou (não crítico):', e.message);
+  }
 }
 
 async function sendChat(senderProfile) {
