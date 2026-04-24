@@ -22,6 +22,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>CUME</title>
+<!-- v23.1: botão ✏️ Editar nos cards de "Registros recentes" do médico (só PENDENTE) -->
 <!-- v23: edição pelo médico (campos leves + trava em PENDENTE) + ordenação criado_em desc nas telas do médico + notificação automática no chat -->
 <!-- v22: PWA — instalável em celular, abre como app, ícone na home -->
 <link rel="manifest" href="manifest.json">
@@ -5614,7 +5615,18 @@ function renderRecent() {
   if (!myRecs.length) { document.getElementById('recentCard').style.display='none'; return; }
   document.getElementById('recentCard').style.display='block';
   const dm = {'PAGO':'dp','PENDENTE':'dpd','NÃO PAGO':'dnp','VERIFICAR':'dv'};
-  document.getElementById('recentList').innerHTML = myRecs.map(r=>`
+  document.getElementById('recentList').innerHTML = myRecs.map(r=>{
+    // v23: índice real no array global (pra openEdit funcionar)
+    const idx = records.indexOf(r);
+    // v23: botão Editar só aparece se PENDENTE (médico não pode editar processados)
+    const stUpper = (r.status || 'PENDENTE').toUpperCase();
+    const podeEditar = stUpper === 'PENDENTE';
+    const btnEdit = podeEditar
+      ? `<button class="pbtn" onclick="event.stopPropagation();openEdit(${idx})"
+           style="padding:5px 10px;font-size:11px;color:#93c5fd;margin-left:8px;flex-shrink:0"
+           title="Editar paciente, procedimento, convênio ou observações">✏️ Editar</button>`
+      : '';
+    return `
     <div class="recent-item">
       <div class="rdot ${dm[r.status]||'dpd'}"></div>
       <div class="ri-info">
@@ -5626,8 +5638,9 @@ function renderRecent() {
         </span>
       </div>
       <div class="ri-val">${parseFloat(r.valorPago) ? 'R$ '+parseFloat(r.valorPago).toLocaleString('pt-BR',{minimumFractionDigits:2}) : r.valorEstimado ? '~R$ '+parseFloat(r.valorEstimado).toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</div>
+      ${btnEdit}
     </div>
-  `).join('');
+  `;}).join('');
 }
 
 // ══ PAINEL ══
