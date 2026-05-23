@@ -12,6 +12,20 @@
   ║                                                          ║
   ║  ALTER TABLE mensagens ENABLE ROW LEVEL SECURITY;       ║
   ║                                                          ║
+  ║  TABELA CONVÊNIOS (rodar uma vez):                       ║
+  ║  CREATE TABLE convenios (                               ║
+  ║    id bigserial PRIMARY KEY,                            ║
+  ║    nome text UNIQUE NOT NULL,                           ║
+  ║    ativo boolean DEFAULT true,                          ║
+  ║    criado_em timestamptz DEFAULT now()                  ║
+  ║  );                                                     ║
+  ║  ALTER TABLE convenios ENABLE ROW LEVEL SECURITY;       ║
+  ║  CREATE POLICY "leitura_livre_convenios" ON convenios   ║
+  ║    FOR SELECT USING (true);                             ║
+  ║  CREATE POLICY "conf_gerencia_convenios" ON convenios   ║
+  ║    FOR ALL USING (                                      ║
+  ║      current_setting('app.role',true) = 'conf');        ║
+  ║                                                          ║
   ║  2. ANTES DE DISTRIBUIR: troque as senhas em USUARIOS   ║
   ║  3. PRODUÇÃO: migrar para Supabase Auth real            ║
   ╚══════════════════════════════════════════════════════════╝
@@ -22,7 +36,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>CUME</title>
-<!-- v23.1: botão ✏️ Editar nos cards de "Registros recentes" do médico (só PENDENTE) -->
+<!-- v24: médico edita tudo + importar lista de produção + cadastro convênios + exclusão múltipla corrigida -->
 <!-- v23: edição pelo médico (campos leves + trava em PENDENTE) + ordenação criado_em desc nas telas do médico + notificação automática no chat -->
 <!-- v22: PWA — instalável em celular, abre como app, ícone na home -->
 <link rel="manifest" href="manifest.json">
@@ -1704,6 +1718,20 @@ input[type="file"]{display:none}
         <div id="consultaMatchesList" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>
       </div>
 
+      <!-- IMPORTAR POR LISTA DE TEXTO -->
+      <div style="background:linear-gradient(135deg,rgba(147,197,253,.06),rgba(59,130,246,.04));border:1px solid rgba(99,179,237,.2);border-radius:14px;padding:16px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="font-size:20px">📋</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#e8f4ff">Importar Lista de Produção</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Cole a lista do dia e importe todos os pacientes de uma vez</div>
+          </div>
+        </div>
+        <button onclick="abrirModalImportarLista()" class="pbtn pbtn-a" style="width:100%;padding:12px;font-size:13px;font-weight:700">
+          📋 Colar e Importar Lista
+        </button>
+      </div>
+
       <!-- Texto extraído (colapsável — referência) -->
       <details style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:10px 14px">
         <summary style="cursor:pointer;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;padding:4px 0">📝 Ver texto bruto extraído do print</summary>
@@ -1776,7 +1804,7 @@ input[type="file"]{display:none}
     <div class="tab act" onclick="swTab('registros',this)">📋 Registros</div>
     <div class="tab" onclick="swTab('alertas',this)">⚠️ Alertas <span id="alertCount"></span></div>
     <div class="tab" onclick="swTab('graficos',this)">📊 Gráficos</div>
-    <div class="tab" onclick="swTab('importar',this)">📷 Importar Print</div>
+
     <div class="tab" onclick="swTab('chat',this)">💬 Mensagens <span id="confChatBadge"></span></div>
     <div class="tab" onclick="swTab('medicos',this)">👥 Médicos</div>
     <div class="tab" onclick="swTab('procedimentos',this)">🔬 Procedimentos</div>
@@ -2264,7 +2292,69 @@ input[type="file"]{display:none}
     </div>
   </div>
 
+  <!-- TAB CONVÊNIOS -->
+  <div class="tab-panel" id="tp-convenios" style="overflow-y:auto">
+    <div style="padding:20px 16px">
+      <div style="margin-bottom:20px">
+        <h2 style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--white);font-weight:400;margin-bottom:4px">🏷️ Cadastro de Convênios</h2>
+        <p style="font-size:12px;color:var(--muted)">Gerencie os convênios disponíveis no sistema. Aparecem nos formulários de registro.</p>
+      </div>
+
+      <!-- Form de cadastro -->
+      <div style="background:rgba(15,24,44,.6);border:1px solid rgba(99,179,237,.12);border-radius:12px;padding:16px;margin-bottom:18px">
+        <h3 style="font-size:13px;color:var(--white);font-weight:700;margin-bottom:12px">➕ Adicionar convênio</h3>
+        <div style="display:flex;gap:10px;align-items:flex-end">
+          <div style="flex:1">
+            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Nome do convênio *</label>
+            <input type="text" id="novoConvenio" placeholder="Ex: BRADESCO SAÚDE"
+              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.15);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none;text-transform:uppercase"
+              oninput="this.value=this.value.toUpperCase()"
+              onkeydown="if(event.key==='Enter')addConvenio()">
+          </div>
+          <button onclick="addConvenio()" class="pbtn pbtn-a" style="padding:10px 20px;white-space:nowrap">➕ Adicionar</button>
+        </div>
+        <div id="convenioFeedback" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;border-radius:8px"></div>
+      </div>
+
+      <!-- Lista de convênios -->
+      <div id="conveniosList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
+        <div style="color:var(--muted);font-size:12px;padding:16px;text-align:center;grid-column:1/-1">Carregando...</div>
+      </div>
+    </div>
+  </div>
+
 </div>
+</div>
+
+
+<!-- MODAL IMPORTAR LISTA DE PRODUÇÃO -->
+<div class="mov" id="movImportarLista" onclick="if(event.target===this)fecharModalImportarLista()">
+  <div class="modal" style="max-width:640px;max-height:90vh;display:flex;flex-direction:column">
+    <h3 style="margin-bottom:6px">📋 Importar Lista de Produção</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Cole a lista do dia abaixo. O sistema vai identificar automaticamente cada paciente, procedimento e convênio.</p>
+
+    <div style="background:rgba(59,130,246,.06);border:1px solid rgba(99,179,237,.15);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:#93c5fd">
+      <strong>Formato reconhecido:</strong><br>
+      🗓️ Produção – Hospital | 22/05/2026<br>
+      1. Nome do Paciente – Colonoscopia<br>
+      🏥 Convênio: Unimed<br>
+      🧑‍⚕️ Cirurgião: Dr. Kerlley<br>
+      💉 Anestesia: Anestesia para Endoscopia<br>
+      📝 Observação: Polipectomia (opcional)
+    </div>
+
+    <textarea id="impListaTexto" rows="12"
+      placeholder="Cole aqui a lista completa..."
+      style="width:100%;background:rgba(15,24,44,.6);border:1px solid rgba(99,179,237,.15);border-radius:10px;color:#e8f4ff;font-family:'DM Mono','Courier New',monospace;font-size:12px;padding:12px;outline:none;resize:vertical;flex-shrink:0"
+      oninput="previewImportarLista()"></textarea>
+
+    <div id="impListaPreview" style="margin-top:12px;max-height:320px;overflow-y:auto"></div>
+    <div id="impListaFeedback" style="display:none;margin-top:10px;font-size:12px;padding:10px 14px;border-radius:8px"></div>
+
+    <div class="mbtns" style="margin-top:14px">
+      <button class="mbc" onclick="fecharModalImportarLista()">Cancelar</button>
+    </div>
+  </div>
 </div>
 
 <!-- MODAL DUPLICATA/EQUIPE EXISTENTE (v17) -->
@@ -3182,7 +3272,7 @@ function toggleGlosaFields() {
 
 // ══ SUPABASE CONFIG ══
 const SB_URL = 'https://kkhynlsefevxhihykgpg.supabase.co';
-const SB_KEY = 'sb_publishable_-c1IrbZqFnYbVIh--LD8cw_lgu7u7yv';
+const SB_KEY = 'sb_publishable_KMFD76n0o5XZMIR7lH_3Fw_F5K9sic0';
 
 async function sbFetch(path, method = 'GET', body = null, extra = {}) {
   const opts = {
@@ -3733,6 +3823,7 @@ function swTab(name,el) {
     renderChat('confChatMsgs', 'conf');
   }
   if(name==='medicos') { renderMedicosAdmin(); renderHospitaisAdmin(); }
+  if(name==='convenios') { renderConveniosAdmin(); }
   if(name==='procedimentos') { renderProcedimentosAdmin(); }
   if(name==='central') { renderCentral(); }
   if(name==='importar') { cImpPreparar(); }
@@ -4715,6 +4806,284 @@ function showHospitalFeedback(texto, tipo) {
   window._hospFbTimer = setTimeout(() => { fb.style.display = 'none'; }, 4000);
 }
 
+// ══ GESTÃO DE CONVÊNIOS (admin) ══
+let CONVENIOS_DB = [];
+
+async function loadConvenios() {
+  try {
+    const rows = await sbFetch('convenios?order=ativo.desc,nome.asc') || [];
+    CONVENIOS_DB = rows;
+    populateConvenioSelects();
+    return rows;
+  } catch(e) {
+    console.warn('[CUME] Tabela convênios não existe ainda — usando lista hardcoded.');
+    return [];
+  }
+}
+
+function populateConvenioSelects() {
+  const ativos = CONVENIOS_DB.filter(c => c.ativo !== false).map(c => c.nome);
+  const hardcoded = ['PREF. ITABIRITO','UNIMED','SUS','PREF. MARIANA','NOTRE DAME','VALE','USISAUDE','PARTICULAR','HAP VIDA','BRADESCO','AMIL','OUTRO'];
+  const lista = ativos.length ? ativos : hardcoded;
+  const selects = document.querySelectorAll('#mConv, #fConvFilter, #fConvenio, #impConvenio, #cImpConvenio');
+  selects.forEach(sel => {
+    if (!sel) return;
+    const val = sel.value;
+    // Preserva opção vazia
+    const primeiraOpt = sel.options[0]?.value === '' ? sel.options[0].outerHTML : '<option value="">—</option>';
+    sel.innerHTML = primeiraOpt + lista.map(n => `<option value="${n}">${n}</option>`).join('');
+    sel.value = val;
+  });
+}
+
+async function renderConveniosAdmin() {
+  const list = document.getElementById('conveniosList');
+  if (!list) return;
+  let todos = [];
+  try {
+    todos = await sbFetch('convenios?order=ativo.desc,nome.asc') || [];
+  } catch(e) {
+    list.innerHTML = '<div style="grid-column:1/-1;color:#fbbf24;font-size:12px;padding:16px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px">⚠️ Rode o SQL de criação da tabela convênios no Supabase para usar este módulo.<br><br><code style="font-size:11px;color:#93c5fd">CREATE TABLE convenios (id bigserial PRIMARY KEY, nome text UNIQUE NOT NULL, ativo boolean DEFAULT true, criado_em timestamptz DEFAULT now());</code></div>';
+    return;
+  }
+  if (!todos.length) {
+    list.innerHTML = '<div style="grid-column:1/-1;color:var(--muted);font-size:12px;padding:16px;text-align:center">Nenhum convênio cadastrado. Use o campo acima para adicionar.</div>';
+    return;
+  }
+  list.innerHTML = todos.map(c => {
+    const ativo = c.ativo !== false;
+    const badge = ativo
+      ? '<span style="background:rgba(74,222,128,.15);color:#4ade80;font-size:9px;font-weight:700;padding:2px 7px;border-radius:5px">● ATIVO</span>'
+      : '<span style="background:rgba(107,132,164,.15);color:var(--muted);font-size:9px;font-weight:700;padding:2px 7px;border-radius:5px">○ INATIVO</span>';
+    return `
+      <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;${ativo?'':'opacity:.55'}">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
+          <strong style="color:var(--white);font-size:13px">🏷️ ${c.nome}</strong>
+          ${badge}
+        </div>
+        <button onclick="toggleConvenio(${c.id}, ${!ativo})"
+          style="width:100%;padding:7px;background:var(--s3);border:1px solid var(--border);color:${ativo?'#fbbf24':'#4ade80'};border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.5px">
+          ${ativo ? '⏸ Desativar' : '▶ Reativar'}
+        </button>
+      </div>`;
+  }).join('');
+}
+
+async function addConvenio() {
+  const input = document.getElementById('novoConvenio');
+  const feedback = document.getElementById('convenioFeedback');
+  const nome = (input.value || '').trim().toUpperCase();
+  feedback.style.display = 'none';
+  if (!nome) { showConvenioFeedback('⚠️ Digite o nome do convênio.', 'warn'); return; }
+  try {
+    await sbFetch('convenios', 'POST', { nome, ativo: true });
+    input.value = '';
+    showConvenioFeedback('✅ Convênio "' + nome + '" adicionado.', 'ok');
+    await loadConvenios();
+    renderConveniosAdmin();
+  } catch(e) {
+    if ((e.message || '').includes('duplicate') || (e.message || '').includes('unique')) {
+      showConvenioFeedback('⚠️ Esse convênio já existe.', 'warn');
+    } else {
+      showConvenioFeedback('❌ Erro ao salvar: ' + e.message, 'err');
+    }
+  }
+}
+
+async function toggleConvenio(id, novoStatus) {
+  try {
+    await sbFetch('convenios?id=eq.' + id, 'PATCH', { ativo: novoStatus });
+    await loadConvenios();
+    renderConveniosAdmin();
+    showConvenioFeedback(novoStatus ? '✅ Convênio reativado.' : '⏸ Convênio desativado.', 'ok');
+  } catch(e) {
+    showConvenioFeedback('❌ Erro: ' + e.message, 'err');
+  }
+}
+
+function showConvenioFeedback(texto, tipo) {
+  const fb = document.getElementById('convenioFeedback');
+  if (!fb) return;
+  const cores = {
+    ok:   'background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);color:#4ade80',
+    warn: 'background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);color:#fbbf24',
+    err:  'background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:#f87171',
+  };
+  fb.style.cssText = 'display:block;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;margin-top:10px;' + (cores[tipo] || cores.ok);
+  fb.textContent = texto;
+  clearTimeout(window._convFbTimer);
+  window._convFbTimer = setTimeout(() => { fb.style.display = 'none'; }, 4000);
+}
+
+// ══ IMPORTAÇÃO POR TEXTO (lista de produção colada pelo médico) ══
+// Reconhece o formato:
+//   1. Nome do Paciente – Procedimento
+//   🏥 Convênio: X
+//   🧑 Cirurgião: Dr. Y
+//   💉 Anestesia: Z
+//   📝 Observação: W  (opcional)
+
+function parsearListaProducao(texto) {
+  const linhas = texto.split(/\n/).map(l => l.trim()).filter(Boolean);
+  const registros = [];
+  let atual = null;
+
+  // Extrai cabeçalho: data e hospital
+  let dataGlobal = '';
+  let hospitalGlobal = '';
+  const cabecalho = linhas.slice(0, 3).join(' ');
+  // Procura data no formato DD/MM/YYYY
+  const mData = cabecalho.match(/(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/);
+  if (mData) {
+    const partes = mData[1].split(/[\/.\-]/);
+    const dia = partes[0].padStart(2,'0');
+    const mes = partes[1].padStart(2,'0');
+    const ano = partes[2].length === 2 ? '20'+partes[2] : partes[2];
+    dataGlobal = `${ano}-${mes}-${dia}`;
+  }
+  // Procura hospital
+  const hospitaisConhecidos = (HOSPITAIS || []).concat(['ITABIRITO','MARIANA','OURO PRETO']);
+  for (const h of hospitaisConhecidos) {
+    if (cabecalho.toUpperCase().includes(h.toUpperCase())) {
+      hospitalGlobal = h;
+      break;
+    }
+  }
+
+  for (const linha of linhas) {
+    // Nova entrada: começa com número + ponto ou parêntese
+    const mEntrada = linha.match(/^(\d+)[.)\-–]\s*(.+)/);
+    if (mEntrada) {
+      if (atual) registros.push(atual);
+      // Separa nome do paciente e procedimento por –, -, ou —
+      const restante = mEntrada[2];
+      const sepIdx = restante.search(/\s+[–\-—]\s+/);
+      let paciente = '', procedimento = '';
+      if (sepIdx >= 0) {
+        paciente = restante.substring(0, sepIdx).trim().toUpperCase();
+        procedimento = restante.substring(sepIdx).replace(/^\s*[–\-—]\s*/, '').trim().toUpperCase();
+      } else {
+        paciente = restante.trim().toUpperCase();
+      }
+      atual = { paciente, procedimento, convenio: '', cirurgiao: '', anestesia: '', obs: '', data: dataGlobal, hospital: hospitalGlobal };
+      continue;
+    }
+
+    if (!atual) continue;
+
+    // Convênio
+    const mConv = linha.match(/conv[êe]nio[:\s]+(.+)/i);
+    if (mConv) { atual.convenio = mConv[1].trim().toUpperCase(); continue; }
+
+    // Cirurgião
+    const mCir = linha.match(/cirurgi[ãa]o[:\s]+(.+)/i);
+    if (mCir) { atual.cirurgiao = mCir[1].trim(); continue; }
+
+    // Anestesia / Procedimento (💉)
+    const mAnes = linha.match(/anestesi[a]?[:\s]+(.+)/i);
+    if (mAnes) {
+      const proc = mAnes[1].trim().toUpperCase();
+      if (!atual.procedimento) atual.procedimento = proc;
+      else if (!atual.anestesia) atual.anestesia = proc;
+      continue;
+    }
+
+    // Observação
+    const mObs = linha.match(/observa[çc][ãa]o[:\s]+(.+)/i);
+    if (mObs) { atual.obs = mObs[1].trim(); continue; }
+  }
+  if (atual) registros.push(atual);
+  return registros.filter(r => r.paciente);
+}
+
+function abrirModalImportarLista() {
+  document.getElementById('impListaTexto').value = '';
+  document.getElementById('impListaPreview').innerHTML = '';
+  document.getElementById('impListaFeedback').style.display = 'none';
+  document.getElementById('movImportarLista').classList.add('open');
+}
+
+function fecharModalImportarLista() {
+  document.getElementById('movImportarLista').classList.remove('open');
+}
+
+function previewImportarLista() {
+  const texto = document.getElementById('impListaTexto').value;
+  const registros = parsearListaProducao(texto);
+  const preview = document.getElementById('impListaPreview');
+  if (!registros.length) {
+    preview.innerHTML = '<div style="color:#fbbf24;font-size:12px;padding:12px;text-align:center">⚠️ Nenhum registro identificado. Verifique o formato da lista.</div>';
+    return;
+  }
+  const hoje = TODAY.toISOString().split('T')[0];
+  preview.innerHTML = `
+    <div style="font-size:11px;color:#4ade80;font-weight:700;margin-bottom:10px">✅ ${registros.length} registro(s) identificados — confira antes de importar:</div>
+    ${registros.map((r, i) => `
+      <div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12px">
+        <div style="font-weight:700;color:#e8f4ff;margin-bottom:4px">${i+1}. ${r.paciente}</div>
+        <div style="color:var(--muted);line-height:1.6">
+          💼 ${r.procedimento || '—'} &nbsp;·&nbsp;
+          🏥 ${r.convenio || '—'} &nbsp;·&nbsp;
+          📅 ${r.data ? new Date(r.data+'T12:00').toLocaleDateString('pt-BR') : hoje} &nbsp;·&nbsp;
+          🏨 ${r.hospital || '—'}
+          ${r.obs ? `<br>📝 ${r.obs}` : ''}
+          ${r.cirurgiao ? `<br>🧑‍⚕️ Cirurgião: ${r.cirurgiao}` : ''}
+        </div>
+      </div>
+    `).join('')}
+    <button onclick="confirmarImportarLista()" class="pbtn pbtn-a" style="width:100%;padding:12px;font-size:13px;margin-top:8px">💾 Importar ${registros.length} registro(s)</button>
+  `;
+}
+
+async function confirmarImportarLista() {
+  const texto = document.getElementById('impListaTexto').value;
+  const registros = parsearListaProducao(texto);
+  const fb = document.getElementById('impListaFeedback');
+  if (!registros.length) return;
+
+  const hoje = TODAY.toISOString().split('T')[0];
+  let ok = 0, erros = 0;
+
+  for (const r of registros) {
+    const obs = [r.obs, r.cirurgiao ? `Cirurgião: ${r.cirurgiao}` : '', r.anestesia ? `Anestesia: ${r.anestesia}` : ''].filter(Boolean).join(' | ');
+    const rec = {
+      data: r.data || hoje,
+      paciente: r.paciente,
+      procedimento: r.procedimento || 'A DEFINIR',
+      convenio: r.convenio || '',
+      hospital: r.hospital || '',
+      status: 'PENDENTE',
+      valorPago: '', valorEstimado: '',
+      obs: obs,
+      isNew: true,
+      medicoId: currentProfile,
+      participacao: 'ANESTESISTA',
+      sigtap: '', tuss: '', equipeId: null,
+    };
+    try {
+      records.unshift(rec);
+      await saveRecord_sb(rec, 0);
+      if (rec._id) await logAuditoria({ registroId: rec._id, tipo: 'CRIACAO', comentario: 'Importado via lista de produção' });
+      ok++;
+    } catch(e) {
+      records.shift();
+      erros++;
+      console.warn('Erro ao importar:', r.paciente, e.message);
+    }
+  }
+
+  save();
+  renderAll && renderAll();
+  renderRecent && renderRecent();
+  fecharModalImportarLista();
+
+  const cores = { ok:'background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);color:#4ade80', err:'background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:#f87171' };
+  fb.style.cssText = 'display:block;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;' + (erros ? cores.err : cores.ok);
+  fb.textContent = `✅ ${ok} registro(s) importados com sucesso!` + (erros ? ` ${erros} com erro.` : '');
+  fb.style.display = 'block';
+  setTimeout(() => { fb.style.display = 'none'; }, 5000);
+}
+
 // ══ GESTÃO DE PROCEDIMENTOS (admin) ══
 // Padrão Letícia: cadastro dinâmico de procedimentos + SIGTAP + TUSS,
 // acessível apenas pela aba 🔬 Procedimentos do painel de conferência.
@@ -5160,6 +5529,7 @@ async function initMedico() {
   document.getElementById('fData').value = TODAY.toISOString().split('T')[0];
   await loadHospitais();
   await loadProcedimentos();
+  await loadConvenios();
   populateHospitalSelects();
   popularSelectsEquipe();
   // v19: typeahead server-side no input de procedimento do formulário principal
@@ -5615,18 +5985,7 @@ function renderRecent() {
   if (!myRecs.length) { document.getElementById('recentCard').style.display='none'; return; }
   document.getElementById('recentCard').style.display='block';
   const dm = {'PAGO':'dp','PENDENTE':'dpd','NÃO PAGO':'dnp','VERIFICAR':'dv'};
-  document.getElementById('recentList').innerHTML = myRecs.map(r=>{
-    // v23: índice real no array global (pra openEdit funcionar)
-    const idx = records.indexOf(r);
-    // v23: botão Editar só aparece se PENDENTE (médico não pode editar processados)
-    const stUpper = (r.status || 'PENDENTE').toUpperCase();
-    const podeEditar = stUpper === 'PENDENTE';
-    const btnEdit = podeEditar
-      ? `<button class="pbtn" onclick="event.stopPropagation();openEdit(${idx})"
-           style="padding:5px 10px;font-size:11px;color:#93c5fd;margin-left:8px;flex-shrink:0"
-           title="Editar paciente, procedimento, convênio ou observações">✏️ Editar</button>`
-      : '';
-    return `
+  document.getElementById('recentList').innerHTML = myRecs.map(r=>`
     <div class="recent-item">
       <div class="rdot ${dm[r.status]||'dpd'}"></div>
       <div class="ri-info">
@@ -5638,9 +5997,8 @@ function renderRecent() {
         </span>
       </div>
       <div class="ri-val">${parseFloat(r.valorPago) ? 'R$ '+parseFloat(r.valorPago).toLocaleString('pt-BR',{minimumFractionDigits:2}) : r.valorEstimado ? '~R$ '+parseFloat(r.valorEstimado).toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</div>
-      ${btnEdit}
     </div>
-  `;}).join('');
+  `).join('');
 }
 
 // ══ PAINEL ══
@@ -6094,7 +6452,7 @@ function atualizarBulkBar() {
 }
 
 function toggleBulkLinha(cb) {
-  const id = parseInt(cb.dataset.rid, 10);
+  const id = cb.dataset.rid;
   if (!id) return;
   if (cb.checked) bulkSelecionados.add(id);
   else bulkSelecionados.delete(id);
@@ -6104,7 +6462,7 @@ function toggleBulkLinha(cb) {
 function toggleBulkAll(cb) {
   const checkboxes = document.querySelectorAll('#tBody input[type="checkbox"][data-rid]');
   checkboxes.forEach(c => {
-    const id = parseInt(c.dataset.rid, 10);
+    const id = c.dataset.rid;
     if (!id) return;
     c.checked = cb.checked;
     if (cb.checked) bulkSelecionados.add(id);
@@ -6307,11 +6665,6 @@ function openAddModal() {
 }
 function openEdit(idx) {
   editIdx=idx; const r=records[idx];
-  // v23: trava de edição pra médico — só PENDENTE pode ser editado por ele
-  if (isMedico(currentProfile) && (r.status || 'PENDENTE').toUpperCase() !== 'PENDENTE') {
-    alert('Só registros com status PENDENTE podem ser editados.\n\nEste já foi processado pela auditoria. Se precisa corrigir algo, use o chat com a Letícia.');
-    return;
-  }
   document.getElementById('mtitle').textContent='✏️ Editar Registro';
   document.getElementById('mData').value=r.data||'';
   document.getElementById('mPac').value=r.paciente||'';
@@ -6338,38 +6691,21 @@ function openEdit(idx) {
   document.getElementById('mov').classList.add('open');
 }
 
-// v23: aplica/remove restrições no modal conforme o perfil.
-// Médico só edita: paciente, procedimento, convênio, observações.
-// Demais campos ficam visualmente travados (disabled). Botão "Salvar" continua ativo.
+// Médico agora pode editar todos os campos livremente
 function aplicarRestricoesEdicaoMedico() {
-  const camposLiberados = new Set(['mPac','mProc','mConv','mObs']);
   const todosCampos = [
     'mData','mPac','mProc','mSigtap','mTuss','mConv','mHosp','mSt',
     'mVal','mEst','mObs','mGlosaData','mGlosaMotivo','mGlosaRecurso',
     'mParticipacao','mMedico'
   ];
-  const restringir = isMedico(currentProfile) && editIdx !== null;
   todosCampos.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
-    const liberado = camposLiberados.has(id);
-    if (restringir && !liberado) {
-      el.disabled = true;
-      el.style.opacity = '0.55';
-      el.style.cursor = 'not-allowed';
-      el.title = 'Apenas a auditoria pode alterar este campo';
-    } else {
-      el.disabled = false;
-      el.style.opacity = '';
-      el.style.cursor = '';
-      el.title = '';
-    }
+    el.disabled = false;
+    el.style.opacity = '';
+    el.style.cursor = '';
+    el.title = '';
   });
-  // Avisa visualmente no título do modal o que o médico pode fazer
-  const titulo = document.getElementById('mtitle');
-  if (restringir && titulo) {
-    titulo.innerHTML = '✏️ Editar Registro <span style="font-size:11px;color:var(--muted);font-weight:400;display:block;margin-top:4px">Você pode editar: paciente, procedimento, convênio e observações</span>';
-  }
 }
 async function saveRecord() {
   const st = document.getElementById('mSt').value;
@@ -6408,27 +6744,9 @@ async function saveRecord() {
     // v20: snapshot do estado anterior pra audit log
     const antes = { ...records[editIdx] };
 
-    // v23: BLINDAGEM — se médico está editando, força preservação dos campos restritos.
-    // Isso impede burla via console (campos estão disabled na UI, mas no submit garantimos).
+    // Médico pode editar todos os campos — medicoId nunca muda de dono
     if (isMedico(currentProfile)) {
-      // Trava: só PENDENTE pode ser editado por médico
-      if ((antes.status || 'PENDENTE').toUpperCase() !== 'PENDENTE') {
-        alert('Este registro não está mais PENDENTE — edição bloqueada.');
-        return;
-      }
-      // Preserva campos que médico não pode alterar
-      r.data           = antes.data;
-      r.sigtap         = antes.sigtap;
-      r.tuss           = antes.tuss;
-      r.hospital       = antes.hospital;
-      r.status         = antes.status;
-      r.valorPago      = antes.valorPago;
-      r.valorEstimado  = antes.valorEstimado;
-      r.glosaData      = antes.glosaData;
-      r.glosaMotivo    = antes.glosaMotivo;
-      r.glosaRecurso   = antes.glosaRecurso;
-      r.participacao   = antes.participacao;
-      r.medicoId       = antes.medicoId; // nunca pode mudar de dono
+      r.medicoId = antes.medicoId;
     }
 
     r._id = records[editIdx]._id;
