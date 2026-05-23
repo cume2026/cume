@@ -1362,6 +1362,7 @@ input[type="file"]{display:none}
   <div class="med-tabs">
     <div class="med-tab act" onclick="swMedTab('registro',this)">📋 Registrar</div>
     <div class="med-tab" onclick="swMedTab('producao',this)">📊 Minha Produção</div>
+    <div class="med-tab" onclick="swMedTab('lista',this)">📥 Importar Lista</div>
     <div class="med-tab" onclick="swMedTab('consultar',this)">📷 Importar Print</div>
     <div class="med-tab" onclick="swMedTab('chat',this)">💬 Mensagens <span id="medChatBadge"></span></div>
   </div>
@@ -1567,6 +1568,58 @@ input[type="file"]{display:none}
       <div id="prodHistList"></div>
     </div>
   </div><!-- /mtp-producao -->
+
+  <!-- ABA IMPORTAR LISTA -->
+  <div class="med-tab-panel" id="mtp-lista" style="padding:20px 16px;padding-bottom:60px">
+    <div style="margin-bottom:18px">
+      <h2 style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--white);font-weight:400;margin-bottom:8px">📥 Importar Produção</h2>
+      <p style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px">
+        Cole a lista do dia no campo abaixo ou importe um arquivo <strong style="color:#93c5fd">.json</strong> gerado pelo sistema.
+      </p>
+      <div style="background:rgba(59,130,246,.06);border:1px solid rgba(99,179,237,.15);border-radius:8px;padding:10px 12px;font-size:11px;color:#93c5fd;margin-bottom:16px">
+        <strong>Formatos aceitos:</strong><br>
+        📋 <strong>Lista de texto</strong> — cole a lista do WhatsApp no formato numerado<br>
+        📄 <strong>Arquivo JSON</strong> — importe o arquivo .json gerado pela conferência<br><br>
+        <strong>Formato da lista:</strong><br>
+        🗓️ Produção – Hospital | 22/05/2026<br>
+        1. Nome do Paciente – Procedimento<br>
+        🏥 Convênio: Unimed<br>
+        🧑‍⚕️ Cirurgião: Dr. Kerlley<br>
+        💉 Anestesia: Anestesia para Endoscopia<br>
+        📝 Observação: (opcional)
+      </div>
+    </div>
+
+    <!-- Importar JSON -->
+    <div style="background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.2);border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <span style="font-size:20px">📄</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#e8f4ff">Importar arquivo JSON</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Selecione um arquivo .json gerado pelo sistema CUME</div>
+        </div>
+      </div>
+      <input type="file" id="medJsonFileInput" accept=".json" style="display:none" onchange="medImportarJSON(event)">
+      <button onclick="document.getElementById('medJsonFileInput').click()" class="pbtn pbtn-a" style="width:100%;padding:12px;font-size:13px;font-weight:700">
+        📄 Selecionar arquivo .json
+      </button>
+      <div id="medJsonFeedback" style="display:none;margin-top:10px;font-size:12px;padding:10px 14px;border-radius:8px"></div>
+    </div>
+
+    <!-- Importar Lista de Texto -->
+    <div style="background:linear-gradient(135deg,rgba(147,197,253,.06),rgba(59,130,246,.04));border:1px solid rgba(99,179,237,.2);border-radius:14px;padding:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <span style="font-size:20px">📋</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#e8f4ff">Colar lista de produção</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Cole a lista do dia e importe todos os pacientes de uma vez</div>
+        </div>
+      </div>
+      <button onclick="abrirModalImportarLista()" class="pbtn pbtn-a" style="width:100%;padding:12px;font-size:13px;font-weight:700">
+        📋 Colar e Importar Lista
+      </button>
+    </div>
+  </div><!-- /mtp-lista -->
 
   <!-- v21: ABA CONSULTAR PRINT DO HOSPITAL -->
   <div class="med-tab-panel" id="mtp-consultar" style="padding:20px 16px;padding-bottom:60px">
@@ -3785,6 +3838,7 @@ function swMedTab(name, el) {
   el.classList.add('act');
   document.getElementById('mtp-'+name).classList.add('act');
   if (name === 'producao') setTimeout(renderProducao, 80);
+  if (name === 'lista') { /* nada especial */ }
   if (name === 'chat') { markChatRead(currentProfile); renderChat('medChatMsgs', currentProfile); }
 }
 
@@ -4922,6 +4976,52 @@ function showConvenioFeedback(texto, tipo) {
 //   🧑 Cirurgião: Dr. Y
 //   💉 Anestesia: Z
 //   📝 Observação: W  (opcional)
+
+// ══ IMPORTAR JSON PELO MÉDICO ══
+async function medImportarJSON(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fb = document.getElementById('medJsonFeedback');
+  const mostrarFb = (txt, tipo) => {
+    const cores = {
+      ok:'background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);color:#4ade80',
+      warn:'background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);color:#fbbf24',
+      err:'background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:#f87171',
+    };
+    fb.style.cssText = 'display:block;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;' + (cores[tipo] || cores.ok);
+    fb.textContent = txt;
+  };
+  try {
+    const text = await file.text();
+    const imported = JSON.parse(text);
+    if (!Array.isArray(imported)) throw new Error('Formato inválido — esperado array JSON.');
+    let ok = 0, erros = 0;
+    for (const r of imported) {
+      const rec = {
+        data: r.data, paciente: (r.paciente||'').toUpperCase(),
+        procedimento: (r.procedimento||'').toUpperCase(),
+        convenio: r.convenio || '', hospital: r.hospital || '',
+        status: r.status || 'PENDENTE',
+        valorPago: r.valorPago || '', valorEstimado: r.valorEstimado || '',
+        obs: r.obs || '', isNew: true,
+        medicoId: currentProfile,
+        participacao: r.participacao || '',
+        sigtap: r.sigtap || '', tuss: r.tuss || '', equipeId: null,
+      };
+      if (!rec.data || !rec.paciente) { erros++; continue; }
+      try {
+        records.unshift(rec);
+        await saveRecord_sb(rec, 0);
+        ok++;
+      } catch(err) { records.shift(); erros++; }
+    }
+    save(); renderRecent && renderRecent();
+    mostrarFb(`✅ ${ok} registro(s) importados!` + (erros ? ` ${erros} com erro.` : ''), 'ok');
+    document.getElementById('medJsonFileInput').value = '';
+  } catch(err) {
+    mostrarFb('❌ Erro: ' + err.message, 'err');
+  }
+}
 
 function parsearListaProducao(texto) {
   const linhas = texto.split(/\n/).map(l => l.trim()).filter(Boolean);
