@@ -58,8 +58,6 @@
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
 </script>
-<!-- v21: tesseract.js para OCR local de prints/imagens do sistema do hospital -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
@@ -1608,7 +1606,6 @@ input[type="file"]{display:none}
     <div class="tab act" onclick="swTab('registros',this)">📋 Registros</div>
     <div class="tab" onclick="swTab('alertas',this)">⚠️ Alertas <span id="alertCount"></span></div>
     <div class="tab" onclick="swTab('graficos',this)">📊 Gráficos</div>
-    <div class="tab" onclick="swTab('importar',this)">📷 Importar Print</div>
     <div class="tab" onclick="swTab('chat',this)">💬 Mensagens <span id="confChatBadge"></span></div>
     <div class="tab" onclick="swTab('medicos',this)">👥 Médicos</div>
     <div class="tab" onclick="swTab('procedimentos',this)">🔬 Procedimentos</div>
@@ -1630,167 +1627,6 @@ input[type="file"]{display:none}
     </div>
   </div>
 
-  <!-- v21: TAB IMPORTAR PRINT (admin/conf) -->
-  <div class="tab-panel" id="tp-importar" style="overflow-y:auto">
-    <div style="padding:20px 16px;padding-bottom:60px">
-      <div style="margin-bottom:18px">
-        <h2 style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--white);font-weight:400;margin-bottom:4px">📷 Importar Print para um Médico</h2>
-        <p style="font-size:12px;color:var(--muted);line-height:1.5">
-          Médico te mandou print do sistema do hospital pelo WhatsApp? Solta aqui, escolhe pra qual médico
-          é o registro, revisa e registra — cai direto na produção dele. <strong style="color:#93c5fd">O OCR roda no seu
-          navegador; nada sobe pra lugar nenhum.</strong>
-        </p>
-      </div>
-
-      <!-- Seletor de médico (obrigatório antes de importar) -->
-      <div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:12px;padding:14px;margin-bottom:14px">
-        <label style="font-size:11px;color:#93c5fd;font-weight:700;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:6px">👤 Médico responsável pelo registro *</label>
-        <select id="cImpMedico"
-          style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
-          <option value="">— selecione o médico —</option>
-        </select>
-      </div>
-
-      <!-- Drop zone -->
-      <div id="cImpDropZone"
-        style="border:2px dashed rgba(99,179,237,.25);border-radius:14px;padding:28px;text-align:center;background:rgba(15,24,44,.4);cursor:pointer;transition:all .2s"
-        onclick="document.getElementById('cImpFileInput').click()">
-        <div style="font-size:40px;margin-bottom:8px">📸</div>
-        <strong style="color:#e8f4ff;font-size:14px;display:block;margin-bottom:4px">Clique aqui ou arraste a imagem / PDF</strong>
-        <div style="font-size:11px;color:var(--muted)">Aceita PNG, JPG, WEBP ou PDF · processado no seu navegador</div>
-        <input type="file" id="cImpFileInput" accept="image/*,application/pdf" style="display:none" onchange="cImpProcessarArquivo(event)">
-      </div>
-
-      <div id="cImpPreview" style="display:none;margin-top:16px;background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px">
-        <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
-          <img id="cImpPreviewImg" style="max-width:220px;max-height:220px;border-radius:10px;border:1px solid rgba(99,179,237,.15);flex-shrink:0;object-fit:contain;background:#000">
-          <div style="flex:1;min-width:200px">
-            <div id="cImpNomeArquivo" style="font-size:13px;font-weight:700;color:#e8f4ff;margin-bottom:6px;word-break:break-all"></div>
-            <div id="cImpInfoArquivo" style="font-size:11px;color:var(--muted);margin-bottom:10px"></div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button onclick="cImpExtrair()" id="cImpBtnExtrair" class="pbtn pbtn-a" style="padding:8px 18px;font-size:12px">🔍 Extrair texto</button>
-              <button onclick="cImpLimpar()" class="pbtn" style="padding:8px 18px;font-size:12px;color:var(--muted)">✕ Limpar</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div id="cImpProgresso" style="display:none;margin-top:14px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:12px 14px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-          <span style="font-size:18px;animation:pulse 1.4s ease-in-out infinite">⏳</span>
-          <strong id="cImpProgressoTxt" style="font-size:13px;color:#93c5fd">Carregando OCR…</strong>
-        </div>
-        <div style="background:rgba(99,179,237,.12);border-radius:6px;height:6px;overflow:hidden">
-          <div id="cImpProgressoBar" style="background:linear-gradient(90deg,#3b82f6,#60a5fa);height:100%;width:0%;transition:width .3s"></div>
-        </div>
-      </div>
-
-      <!-- Formulário preenchido -->
-      <div id="cImpResultado" style="display:none;margin-top:16px">
-        <div style="background:linear-gradient(180deg,rgba(59,130,246,.08),rgba(15,24,44,.4));border:1px solid rgba(59,130,246,.25);border-radius:14px;padding:18px;margin-bottom:14px">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-            <span style="font-size:24px">🎯</span>
-            <div style="flex:1;min-width:220px">
-              <strong style="font-family:'DM Serif Display',serif;font-size:18px;color:#e8f4ff;font-weight:400;display:block">Registro identificado</strong>
-              <span style="font-size:11px;color:var(--muted)">Revise antes de registrar. O médico selecionado acima receberá na produção dele.</span>
-            </div>
-            <span id="cImpConfianca" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:6px;letter-spacing:.5px"></span>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
-            <div>
-              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Data *</label>
-              <input type="date" id="cImpData"
-                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
-            </div>
-            <div>
-              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Hospital *</label>
-              <select id="cImpHospital"
-                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
-                <option value="">—</option>
-              </select>
-            </div>
-          </div>
-          <div style="margin-bottom:10px">
-            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Paciente *</label>
-            <input type="text" id="cImpPaciente" placeholder="Nome do paciente"
-              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none;text-transform:uppercase"
-              oninput="this.value=this.value.toUpperCase()">
-            <div id="cImpPacienteCandidatos" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
-          </div>
-          <div style="margin-bottom:10px">
-            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Procedimento *</label>
-            <input type="text" id="cImpProcedimento" placeholder="Ex: Cesariana, Colecistectomia..."
-              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none"
-              oninput="autoCodigos('cImpProcedimento','cImpSigtap','cImpTuss')">
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
-            <div>
-              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">SIGTAP</label>
-              <input type="text" id="cImpSigtap" inputmode="numeric" maxlength="10" placeholder="10 dígitos"
-                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Mono','Courier New',monospace;font-size:13px;padding:10px 14px;outline:none;letter-spacing:.5px"
-                oninput="this.value=this.value.replace(/\D/g,'')">
-            </div>
-            <div>
-              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">TUSS</label>
-              <input type="text" id="cImpTuss" inputmode="numeric" maxlength="20"
-                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Mono','Courier New',monospace;font-size:13px;padding:10px 14px;outline:none;letter-spacing:.5px"
-                oninput="this.value=this.value.replace(/\D/g,'')">
-            </div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
-            <div>
-              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Convênio *</label>
-              <input type="text" id="cImpConvenio" placeholder="Ex: UNIMED, BRADESCO..."
-                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none;text-transform:uppercase"
-                oninput="this.value=this.value.toUpperCase()">
-            </div>
-            <div>
-              <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Valor estimado</label>
-              <input type="number" id="cImpValor" step="0.01" placeholder="0,00"
-                style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
-            </div>
-          </div>
-          <div style="margin-bottom:12px">
-            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Participação do médico *</label>
-            <select id="cImpParticipacao"
-              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 14px;outline:none">
-              <option value="CIRURGIÃO">👨‍⚕️ Cirurgião</option>
-              <option value="ANESTESISTA">💉 Anestesista</option>
-              <option value="1º AUXILIAR">🤝 1º Auxiliar</option>
-              <option value="2º AUXILIAR">🤝 2º Auxiliar</option>
-            </select>
-          </div>
-          <div style="margin-bottom:14px">
-            <label style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:4px">Observação</label>
-            <input type="text" id="cImpObs"
-              style="width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(99,179,237,.2);border-radius:9px;color:#e8f4ff;font-family:'DM Sans',sans-serif;font-size:12px;padding:9px 12px;outline:none">
-          </div>
-
-          <div id="cImpDuplicata" style="display:none;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:#fbbf24">
-            ⚠️ <strong>Atenção:</strong> <span id="cImpDuplicataTxt"></span>
-          </div>
-
-          <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <button onclick="cImpImportar()" class="btn-submit" style="flex:1;min-width:220px">➤ Registrar para o médico selecionado</button>
-            <button onclick="cImpLimpar()" class="pbtn" style="padding:12px 22px;font-size:12px;color:var(--muted)">✕ Cancelar</button>
-          </div>
-          <div id="cImpFeedback" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600"></div>
-        </div>
-
-        <details style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:10px 14px">
-          <summary style="cursor:pointer;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;padding:4px 0">📝 Ver texto bruto extraído do print</summary>
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:8px 0">
-            <button onclick="cImpReinterpretar()" class="pbtn" style="padding:4px 10px;font-size:10px;color:#93c5fd">🔄 Reinterpretar</button>
-          </div>
-          <div id="cImpAnalise" style="font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:8px"></div>
-          <textarea id="cImpTexto" rows="8"
-            style="width:100%;background:rgba(15,24,44,.6);border:1px solid rgba(99,179,237,.1);border-radius:8px;color:#e8f4ff;font-family:'DM Mono','Courier New',monospace;font-size:11px;padding:10px 12px;outline:none;resize:vertical;line-height:1.6"
-            oninput="cImpReinterpretar()"></textarea>
-        </details>
-      </div>
-    </div>
-  </div>
 
   <!-- TAB REGISTROS -->
   <div class="tab-panel act" id="tp-registros">
@@ -3600,227 +3436,8 @@ function swTab(name,el) {
   if(name==='medicos') { renderMedicosAdmin(); renderHospitaisAdmin(); }
   if(name==='procedimentos') { renderProcedimentosAdmin(); }
   if(name==='central') { renderCentral(); }
-  if(name==='importar') { cImpPreparar(); }
 }
 
-// ══ IMPORT NO PAINEL CONF (v21) ══
-// Mesmo fluxo do médico, mas com seletor de médico (conf importa pra qualquer um).
-let _cImpArquivo = null;
-
-function cImpPreparar() {
-  // Popula o select de médico com os ativos
-  const sel = document.getElementById('cImpMedico');
-  if (!sel) return;
-  const medicosAtivos = Object.entries(USUARIOS_DB || MEDICOS || {})
-    .filter(([id, u]) => u.role === 'medico' && u.ativo !== false)
-    .sort((a, b) => (a[1].nome || '').localeCompare(b[1].nome || ''));
-  const valorAtual = sel.value;
-  sel.innerHTML = '<option value="">— selecione o médico —</option>' +
-    medicosAtivos.map(([id, u]) => `<option value="${id}">${u.emoji || ''} ${u.nome} · ${u.especialidade || ''}</option>`).join('');
-  sel.value = valorAtual || (typeof medicoFilter !== 'undefined' && medicoFilter ? medicoFilter : '');
-  // DnD
-  const zona = document.getElementById('cImpDropZone');
-  if (zona && !zona._dndReady) {
-    zona._dndReady = true;
-    ['dragover','dragenter'].forEach(ev => zona.addEventListener(ev, e => {
-      e.preventDefault(); zona.style.borderColor = '#3b82f6'; zona.style.background = 'rgba(59,130,246,.08)';
-    }));
-    ['dragleave','drop'].forEach(ev => zona.addEventListener(ev, e => {
-      e.preventDefault(); zona.style.borderColor = 'rgba(99,179,237,.25)'; zona.style.background = 'rgba(15,24,44,.4)';
-    }));
-    zona.addEventListener('drop', e => {
-      const f = e.dataTransfer?.files?.[0];
-      if (f) cImpProcessarArquivo({ target: { files: [f] } });
-    });
-  }
-}
-
-async function cImpProcessarArquivo(ev) {
-  const f = ev.target.files?.[0];
-  if (!f) return;
-  _cImpArquivo = f;
-  document.getElementById('cImpNomeArquivo').textContent = f.name;
-  document.getElementById('cImpInfoArquivo').textContent = `${(f.size/1024).toFixed(1)} KB · ${f.type || 'tipo desconhecido'}`;
-  const img = document.getElementById('cImpPreviewImg');
-  if (f.type.startsWith('image/')) {
-    img.src = URL.createObjectURL(f);
-    img.style.display = 'block';
-  } else if (f.type === 'application/pdf') {
-    try {
-      const buf = await f.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-      const page = await pdf.getPage(1);
-      const vp = page.getViewport({ scale: 1.5 });
-      const canvas = document.createElement('canvas');
-      canvas.width = vp.width; canvas.height = vp.height;
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-      img.src = canvas.toDataURL('image/png');
-      img.style.display = 'block';
-      _cImpArquivo._pdfCanvas = canvas;
-    } catch (e) { console.warn(e); img.style.display = 'none'; }
-  }
-  document.getElementById('cImpPreview').style.display = 'block';
-  document.getElementById('cImpProgresso').style.display = 'none';
-  document.getElementById('cImpResultado').style.display = 'none';
-}
-
-function cImpLimpar() {
-  _cImpArquivo = null;
-  document.getElementById('cImpFileInput').value = '';
-  document.getElementById('cImpPreview').style.display = 'none';
-  document.getElementById('cImpProgresso').style.display = 'none';
-  document.getElementById('cImpResultado').style.display = 'none';
-  document.getElementById('cImpTexto').value = '';
-  const fb = document.getElementById('cImpFeedback'); if (fb) fb.style.display = 'none';
-}
-
-async function cImpExtrair() {
-  if (!_cImpArquivo) return;
-  if (typeof Tesseract === 'undefined') { alert('OCR ainda carregando. Aguarde alguns segundos.'); return; }
-  const btn = document.getElementById('cImpBtnExtrair');
-  const progBox = document.getElementById('cImpProgresso');
-  const progTxt = document.getElementById('cImpProgressoTxt');
-  const progBar = document.getElementById('cImpProgressoBar');
-  btn.disabled = true; btn.textContent = '⏳ Processando...';
-  progBox.style.display = 'block'; progBar.style.width = '0%';
-  progTxt.textContent = 'Preparando OCR…';
-  try {
-    const fonte = _cImpArquivo._pdfCanvas || _cImpArquivo;
-    const { data } = await Tesseract.recognize(fonte, 'por', {
-      logger: m => {
-        if (m.status && progTxt) {
-          const labels = { 'loading tesseract core':'Carregando OCR…','initializing tesseract':'Inicializando…','loading language traineddata':'Baixando português…','initializing api':'Preparando…','recognizing text':'Lendo texto…' };
-          progTxt.textContent = labels[m.status] || m.status;
-          if (typeof m.progress === 'number') progBar.style.width = Math.round(m.progress * 100) + '%';
-        }
-      }
-    });
-    const texto = (data?.text || '').trim();
-    document.getElementById('cImpTexto').value = texto;
-    document.getElementById('cImpResultado').style.display = 'block';
-    progBox.style.display = 'none';
-    cImpPreencherComExtracao(texto);
-  } catch(e) {
-    progBox.style.display = 'none';
-    alert('Erro ao ler a imagem: ' + e.message);
-  } finally {
-    btn.disabled = false; btn.textContent = '🔍 Extrair texto';
-  }
-}
-
-function cImpPreencherComExtracao(texto) {
-  if (!texto) return;
-  // Reaproveita o extrator do fluxo do médico
-  const ex = impExtrairCampos(texto);
-  const hoje = TODAY.toISOString().split('T')[0];
-  document.getElementById('cImpData').value = ex.data || hoje;
-  document.getElementById('cImpPaciente').value = ex.paciente || '';
-  document.getElementById('cImpProcedimento').value = ex.procedimento || '';
-  document.getElementById('cImpSigtap').value = ex.sigtap || '';
-  document.getElementById('cImpTuss').value = ex.tuss || '';
-  document.getElementById('cImpConvenio').value = ex.convenio || '';
-  document.getElementById('cImpValor').value = ex.valor || '';
-  document.getElementById('cImpObs').value = `Importado via print (conferência) em ${new Date().toLocaleDateString('pt-BR')}`;
-  const hospSel = document.getElementById('cImpHospital');
-  hospSel.innerHTML = '<option value="">—</option>' + (HOSPITAIS || []).map(h => `<option value="${h}">${h}</option>`).join('') + '<option value="OUTRO">OUTRO</option>';
-  if (ex.hospital) hospSel.value = ex.hospital;
-  const badge = document.getElementById('cImpConfianca');
-  const c = ex.confianca || 0;
-  const cor = c >= 80 ? '#4ade80' : c >= 50 ? '#fbbf24' : '#f87171';
-  badge.style.background = cor + '22'; badge.style.color = cor; badge.textContent = c + '% identificado';
-  const cand = document.getElementById('cImpPacienteCandidatos');
-  if (ex.pacienteCandidatos && ex.pacienteCandidatos.length > 1) {
-    cand.innerHTML = 'Outras opções detectadas: ' +
-      ex.pacienteCandidatos.slice(0, 5).map(n =>
-        `<a href="#" onclick="event.preventDefault();document.getElementById('cImpPaciente').value='${n.replace(/'/g,"\\'")}';" style="color:#93c5fd;text-decoration:underline;margin:0 3px">${escapeHtml(n)}</a>`
-      ).join(' · ');
-  } else cand.innerHTML = '';
-  // Análise bruta
-  const analise = document.getElementById('cImpAnalise');
-  const mkTag = (l, v, cor) => v ? `<span style="color:var(--muted);font-size:10px;margin-right:6px">${l}:</span><span style="background:${cor}15;color:${cor};font-size:10px;padding:1px 6px;border-radius:4px;margin-right:8px;font-weight:600">${escapeHtml(String(v))}</span>` : '';
-  analise.innerHTML = [
-    mkTag('📅 Datas', (ex.datasEncontradas || []).join(', '), '#93c5fd'),
-    mkTag('💰 Valor', ex.valor, '#4ade80'),
-    mkTag('🏷 Códigos', (ex.codigos || []).join(', '), '#fbbf24'),
-    mkTag('🔬 Alternativas', (ex.procCandidatos || []).slice(1).join(', '), '#fb923c'),
-  ].filter(Boolean).join(' ');
-  // Duplicata: usa o médico selecionado, não o currentProfile
-  const medSel = document.getElementById('cImpMedico').value;
-  const box = document.getElementById('cImpDuplicata');
-  const txt = document.getElementById('cImpDuplicataTxt');
-  if (medSel && ex.paciente && ex.data) {
-    const dup = records.find(r => r.medicoId === medSel && r.data === ex.data && (r.paciente || '').toUpperCase() === ex.paciente.toUpperCase());
-    if (dup) {
-      box.style.display = 'block';
-      txt.innerHTML = `O médico selecionado já tem um registro de <strong>${escapeHtml(dup.paciente)}</strong> em <strong>${new Date(dup.data+'T12:00').toLocaleDateString('pt-BR')}</strong>. Se não for duplicata, pode registrar mesmo assim.`;
-    } else box.style.display = 'none';
-  } else box.style.display = 'none';
-}
-
-function cImpReinterpretar() {
-  const texto = document.getElementById('cImpTexto').value;
-  if (!texto) return;
-  cImpPreencherComExtracao(texto);
-}
-
-async function cImpImportar() {
-  const fb = document.getElementById('cImpFeedback');
-  const mostrarFb = (t, tipo) => {
-    const cores = {
-      ok:'background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);color:#4ade80',
-      warn:'background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);color:#fbbf24',
-      err:'background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:#f87171',
-    };
-    fb.style.cssText = 'display:block;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;margin-top:12px;' + (cores[tipo] || cores.ok);
-    fb.textContent = t;
-  };
-  const medicoAlvo = document.getElementById('cImpMedico').value;
-  if (!medicoAlvo) { mostrarFb('⚠️ Selecione primeiro o médico responsável pelo registro.', 'warn'); return; }
-  const data = document.getElementById('cImpData').value;
-  const paciente = document.getElementById('cImpPaciente').value.trim().toUpperCase();
-  const procedimento = document.getElementById('cImpProcedimento').value.trim().toUpperCase();
-  const sigtap = (document.getElementById('cImpSigtap').value || '').replace(/\D/g,'').trim();
-  const tuss = (document.getElementById('cImpTuss').value || '').replace(/\D/g,'').trim();
-  const convenio = document.getElementById('cImpConvenio').value.trim().toUpperCase();
-  const hospital = document.getElementById('cImpHospital').value;
-  const participacao = document.getElementById('cImpParticipacao').value;
-  const obs = document.getElementById('cImpObs').value.trim();
-  const valorEstimado = document.getElementById('cImpValor').value;
-  if (!data || !paciente || !procedimento || !convenio || !hospital) {
-    mostrarFb('⚠️ Preencha ao menos: Data, Paciente, Procedimento, Convênio e Hospital.', 'warn'); return;
-  }
-  if (sigtap && sigtap.length !== 10) {
-    mostrarFb('⚠️ SIGTAP deve ter 10 dígitos ou ficar em branco.', 'warn'); return;
-  }
-  const rec = {
-    data, paciente, procedimento, sigtap, tuss,
-    convenio, hospital,
-    status: 'PENDENTE',
-    valorPago: '', valorEstimado: valorEstimado || '',
-    obs, isNew: true,
-    medicoId: medicoAlvo,
-    participacao, equipeId: null,
-  };
-  try {
-    // Registro é de outro médico (conf importando) → salva via saveRecord_sb_externo
-    const res = await saveRecord_sb_externo(rec);
-    const idCriado = (res && res[0] && res[0].id) || null;
-    if (idCriado) {
-      await logAuditoria({
-        registroId: idCriado, tipo: 'IMPORT_PDF',
-        comentario: `Importado via print pela conferência · médico: ${medicoAlvo} · papel: ${participacao}`
-      });
-    }
-    // Recarrega registros pra refletir no painel
-    await loadRecords();
-    renderAll();
-    const nomeMed = (getUsuario(medicoAlvo)?.nome || medicoAlvo);
-    mostrarFb(`✅ Registro criado na produção de ${nomeMed}. Aparece na aba Registros.`, 'ok');
-    setTimeout(() => { cImpLimpar(); }, 2000);
-  } catch(e) {
-    mostrarFb('❌ Erro ao salvar: ' + e.message, 'err');
-  }
-}
 
 // ══ PAINEL ADMIN: GERENCIAR MÉDICOS ══
 // Senhas padrão (pra marcar visualmente quais ainda não foram trocadas)
@@ -4981,6 +4598,16 @@ function renderProducao() {
     'VERIFICAR':'background:rgba(192,132,252,.12);color:#c084fc;border:1px solid rgba(192,132,252,.25)',
     'GLOSADO':'background:rgba(251,113,133,.12);color:#fb7185;border:1px solid rgba(251,113,133,.3)'
   };
+  // v26: botão de editar (nome do paciente, convênio e mais) nas listas da
+  // produção — segue a mesma regra já usada no resto do sistema: só aparece
+  // se o registro ainda estiver PENDENTE.
+  const btnEditarProd = (r) => {
+    const idx = records.indexOf(r);
+    if ((r.status || 'PENDENTE').toUpperCase() !== 'PENDENTE') return '';
+    return `<button class="pbtn" onclick="event.stopPropagation();openEdit(${idx})"
+      style="padding:4px 9px;font-size:10px;color:#93c5fd;margin-left:6px;flex-shrink:0"
+      title="Editar paciente, convênio e outros campos">✏️</button>`;
+  };
   const pendList = source.filter(r=>r.status!=='PAGO').sort((a,b)=>(a.data||'').localeCompare(b.data||''));
   document.getElementById('prodPendList').innerHTML = pendList.length ? pendList.map(r=>`
     <div class="prod-list-item">
@@ -4991,6 +4618,7 @@ function renderProducao() {
         ${r.obs?`<span style="color:#c084fc;font-size:10px;display:block;margin-top:2px">📌 ${r.obs}</span>`:''}
       </div>
       <span class="prod-badge" style="${badgeSt[r.status]||''}">${r.status}</span>
+      ${btnEditarProd(r)}
     </div>
   `).join('') : '<div class="prod-empty">🎉 Nenhum registro pendente!</div>';
 
@@ -5011,9 +4639,12 @@ function renderProducao() {
         <strong>${r.paciente||'—'}</strong>
         <span>${r.procedimento||'—'} · ${r.data?new Date(r.data+'T12:00').toLocaleDateString('pt-BR'):'—'}</span>
       </div>
-      <div style="text-align:right;flex-shrink:0">
-        <span class="prod-badge" style="${stColor[r.status]||'background:rgba(99,179,237,.08);color:#6b84a4'}">${r.status}</span>
-        ${parseFloat(r.valorPago)?`<div style="font-size:12px;color:#4ade80;font-weight:700;margin-top:3px;font-family:'JetBrains Mono',monospace;letter-spacing:-.2px">R$ ${parseFloat(r.valorPago).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`:''}
+      <div style="text-align:right;flex-shrink:0;display:flex;align-items:center;gap:2px">
+        <div>
+          <span class="prod-badge" style="${stColor[r.status]||'background:rgba(99,179,237,.08);color:#6b84a4'}">${r.status}</span>
+          ${parseFloat(r.valorPago)?`<div style="font-size:12px;color:#4ade80;font-weight:700;margin-top:3px;font-family:'JetBrains Mono',monospace;letter-spacing:-.2px">R$ ${parseFloat(r.valorPago).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`:''}
+        </div>
+        ${btnEditarProd(r)}
       </div>
     </div>
   `).join('') : '<div class="prod-empty">Nenhum registro ainda.</div>';
