@@ -2898,6 +2898,72 @@ async function sbAuthUpdatePassword(password) {
   return data;
 }
 
+// Abre a troca de senha quando o Supabase redireciona um link de recuperacao
+// para o CUME. O token vem no fragmento da URL (#access_token=...&type=recovery).
+function abrirRecuperacaoSenhaSeNecessario() {
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  if (hash.get('type') !== 'recovery' || !hash.get('access_token')) return false;
+  SB_ACCESS_TOKEN = hash.get('access_token');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'recuperacaoSenhaOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(3,7,18,.92);backdrop-filter:blur(8px)';
+  overlay.innerHTML = `
+    <div style="width:min(420px,100%);background:#101827;border:1px solid rgba(96,165,250,.35);border-radius:18px;padding:28px;box-shadow:0 24px 80px rgba(0,0,0,.55);color:#e5eefc;font-family:inherit">
+      <div style="font-size:28px;margin-bottom:8px">🔐</div>
+      <h2 style="margin:0 0 8px;font-size:22px">Criar nova senha</h2>
+      <p style="margin:0 0 20px;color:#9fb0c8;font-size:13px;line-height:1.5">Digite uma senha nova para sua conta administrativa do CUME.</p>
+      <label style="display:block;font-size:12px;color:#b9c7d9;margin-bottom:6px">Nova senha</label>
+      <input id="recSenhaNova" type="password" autocomplete="new-password" style="width:100%;box-sizing:border-box;padding:12px;border-radius:9px;border:1px solid #334155;background:#08111f;color:white;font-size:15px;margin-bottom:12px">
+      <label style="display:block;font-size:12px;color:#b9c7d9;margin-bottom:6px">Confirmar nova senha</label>
+      <input id="recSenhaConf" type="password" autocomplete="new-password" style="width:100%;box-sizing:border-box;padding:12px;border-radius:9px;border:1px solid #334155;background:#08111f;color:white;font-size:15px">
+      <div id="recSenhaMsg" style="display:none;margin-top:12px;font-size:13px;line-height:1.4"></div>
+      <button id="recSenhaBtn" type="button" style="width:100%;margin-top:18px;padding:12px;border:0;border-radius:9px;background:#2563eb;color:white;font-weight:700;font-size:14px;cursor:pointer">Salvar nova senha</button>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const nova = overlay.querySelector('#recSenhaNova');
+  const conf = overlay.querySelector('#recSenhaConf');
+  const msg = overlay.querySelector('#recSenhaMsg');
+  const btn = overlay.querySelector('#recSenhaBtn');
+  btn.addEventListener('click', async () => {
+    msg.style.display = 'block';
+    if (nova.value.length < 6) {
+      msg.style.color = '#fbbf24';
+      msg.textContent = 'A senha precisa ter pelo menos 6 caracteres.';
+      return;
+    }
+    if (nova.value !== conf.value) {
+      msg.style.color = '#fbbf24';
+      msg.textContent = 'As senhas nao coincidem.';
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Salvando...';
+    try {
+      await sbAuthUpdatePassword(nova.value);
+      history.replaceState(null, document.title, window.location.pathname + window.location.search);
+      msg.style.color = '#4ade80';
+      msg.textContent = 'Senha criada com sucesso. Agora voce ja pode entrar no CUME.';
+      btn.textContent = 'Ir para o login';
+      btn.disabled = false;
+      btn.onclick = () => {
+        SB_ACCESS_TOKEN = null;
+        overlay.remove();
+        document.getElementById('loginUser').value = 'leticiaccunha06@gmail.com';
+        document.getElementById('loginPass').focus();
+      };
+    } catch (e) {
+      msg.style.color = '#f87171';
+      msg.textContent = (e.message || 'Nao foi possivel criar a senha.') + ' Solicite um novo link se ele tiver expirado.';
+      btn.disabled = false;
+      btn.textContent = 'Tentar novamente';
+    }
+  });
+  setTimeout(() => nova.focus(), 100);
+  return true;
+}
+
 async function sbFetch(path, method = 'GET', body = null, extra = {}) {
   const opts = {
     method,
@@ -3282,6 +3348,7 @@ async function deleteRecord_sb(id) {
 
 // ══ INIT ══
 window.onload = async () => {
+  abrirRecuperacaoSenhaSeNecessario();
   // Apenas verifica conexão — NÃO carrega registros antes do login
   const msg = document.createElement('p');
   msg.id = 'loadingMsg';
