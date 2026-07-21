@@ -1281,8 +1281,8 @@ input[type="file"]{display:none}
 
       <div class="login-form">
         <div>
-          <label for="loginUser">Usuário</label>
-          <input class="login-field" type="text" id="loginUser" placeholder="seu.usuario"
+          <label for="loginUser">Usuário ou e-mail</label>
+          <input class="login-field" type="text" id="loginUser" placeholder="seu.usuario ou seu@email.com"
             autocomplete="username" autocapitalize="none" spellcheck="false"
             onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
         </div>
@@ -2387,7 +2387,8 @@ const USUARIOS = {
   'marco':     { id:'marco',     nome:'Dr. Marco Antonio',    especialidade:'Anestesiologista', senha:'Marco@2024',     emoji:'💉', cor:'rgba(56,189,248,.12)'   },
   'andre':     { id:'andre',     nome:'Dr. Andre Sacramento', especialidade:'Pediatra',         senha:'Andre@2024',     emoji:'🧒', cor:'rgba(52,211,153,.12)'   },
   'frederico': { id:'frederico', nome:'Dr. Frederico',        especialidade:'Ortopedista',      senha:'Frederico@2024', emoji:'🦴', cor:'rgba(167,139,250,.12)' },
-  'conf':      { id:'conf',      nome:'Letícia',              especialidade:'Administradora',   senha:'Conf@2024',      emoji:'📊', cor:'rgba(59,130,246,.12)'   },
+  // A administradora usa Supabase Auth. Não manter senha administrativa no HTML público.
+  'conf':      { id:'conf',      nome:'Letícia',              especialidade:'Administradora',   senha:null,             emoji:'📊', cor:'rgba(59,130,246,.12)'   },
 };
 // ⚠️ As senhas do fallback acima só valem se o Supabase estiver offline.
 // Em uso normal, a tabela `usuarios` do banco é a fonte da verdade.
@@ -2403,7 +2404,7 @@ const _CHIP_CORES = {
   cristiano:'#f87171', zolder:'#fb923c', marco:'#38bdf8', andre:'#34d399',
   frederico:'#a78bfa'
 };
-let PINS = { conf: USUARIOS.conf.senha };
+let PINS = { conf: null };
 
 // USUARIOS_DB contém a versão vinda do Supabase (pode ser null no início)
 let USUARIOS_DB = null;
@@ -2851,6 +2852,51 @@ function toggleGlosaFields() {
 // ══ SUPABASE CONFIG ══
 const SB_URL = 'https://kkhynlsefevxhihykgpg.supabase.co';
 const SB_KEY = 'sb_publishable_-c1IrbZqFnYbVIh--LD8cw_lgu7u7yv';
+let SB_ACCESS_TOKEN = null;
+
+async function sbAuthLogin(email, password) {
+  const r = await fetch(SB_URL + '/auth/v1/token?grant_type=password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': SB_KEY },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.access_token) {
+    throw new Error(data.error_description || data.msg || 'E-mail ou senha incorretos.');
+  }
+  SB_ACCESS_TOKEN = data.access_token;
+  return data;
+}
+
+async function sbAuthLogout() {
+  if (!SB_ACCESS_TOKEN) return;
+  try {
+    await fetch(SB_URL + '/auth/v1/logout', {
+      method: 'POST',
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_ACCESS_TOKEN }
+    });
+  } catch (e) {
+    console.warn('[CUME] Logout remoto falhou:', e.message);
+  } finally {
+    SB_ACCESS_TOKEN = null;
+  }
+}
+
+async function sbAuthUpdatePassword(password) {
+  if (!SB_ACCESS_TOKEN) throw new Error('Sessão de autenticação não encontrada. Entre novamente.');
+  const r = await fetch(SB_URL + '/auth/v1/user', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SB_KEY,
+      'Authorization': 'Bearer ' + SB_ACCESS_TOKEN
+    },
+    body: JSON.stringify({ password })
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.msg || data.error_description || 'Não foi possível trocar a senha.');
+  return data;
+}
 
 async function sbFetch(path, method = 'GET', body = null, extra = {}) {
   const opts = {
@@ -2858,7 +2904,7 @@ async function sbFetch(path, method = 'GET', body = null, extra = {}) {
     headers: {
       'Content-Type': 'application/json',
       'apikey': SB_KEY,
-      'Authorization': 'Bearer ' + SB_KEY,
+      'Authorization': 'Bearer ' + (SB_ACCESS_TOKEN || SB_KEY),
       'Prefer': method === 'POST' ? 'return=representation' : 'count=none',
       ...extra
     }
@@ -3321,6 +3367,51 @@ async function doLogin() {
   const err  = document.getElementById('loginError');
   const btn  = document.querySelector('.login-btn');
 
+  // Contas já migradas entram por e-mail usando Supabase Auth.
+  if (user.includes('@')) {
+    const old = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Autenticando...';
+    try {
+      await sbAuthLogin(user, pass);
+      const perfilRpc = await sbFetch('rpc/cume_usuario_atual', 'POST', {});
+      const perfil = Array.isArray(perfilRpc) ? perfilRpc[0] : perfilRpc;
+      if (!perfil || !perfil.id) throw new Error('Conta não vinculada a um perfil do CUME.');
+      if (perfil.ativo === false) throw new Error('Usuário desativado. Entre em contato com a administração.');
+
+      await loadUsuarios();
+      const uAuth = getUsuario(perfil.id) || {
+        id: perfil.id,
+        nome: user,
+        especialidade: perfil.role === 'conf' ? 'Administradora' : '',
+        emoji: perfil.role === 'conf' ? '📊' : '👤',
+        role: perfil.role,
+        ativo: perfil.ativo !== false
+      };
+      await entrarNoCume(uAuth);
+      return;
+    } catch (e) {
+      await sbAuthLogout();
+      err.textContent = e.message || 'E-mail ou senha incorretos.';
+      err.style.display = 'block';
+      document.getElementById('loginPass').value = '';
+      setTimeout(() => { err.style.display = 'none'; }, 5000);
+      return;
+    } finally {
+      btn.textContent = old;
+      btn.disabled = false;
+    }
+  }
+
+  // Transição temporária: médicos ainda sem e-mail continuam no acesso legado.
+  if (user === 'conf') {
+    err.textContent = 'A administração agora entra pelo e-mail cadastrado.';
+    err.style.display = 'block';
+    document.getElementById('loginPass').value = '';
+    setTimeout(() => { err.style.display = 'none'; }, 5000);
+    return;
+  }
+
   // Tenta carregar usuários do Supabase (se ainda não carregou)
   if (!USUARIOS_DB) {
     btn.disabled = true;
@@ -3348,6 +3439,10 @@ async function doLogin() {
     return;
   }
 
+  await entrarNoCume(u);
+}
+
+async function entrarNoCume(u) {
   currentProfile = u.id;
   document.getElementById('loginScreen').style.display = 'none';
 
@@ -3369,7 +3464,8 @@ async function doLogin() {
 function selectProfile(profile) { /* não usado */ }
 function checkPin() { /* não usado */ }
 
-function logout() {
+async function logout() {
+  await sbAuthLogout();
   // v18: NÃO apaga mais o cache local — preserva registros e chat para continuidade offline.
   // Para limpeza explícita, existe outra ação dedicada.
   currentProfile = null; pendingProfile = null;
@@ -3444,7 +3540,7 @@ function swTab(name,el) {
 const SENHAS_PADRAO = {
   maike:'Maike@2024', ivan:'Ivan@2024', nivan:'Nivan@2024', azzi:'Azzi@2024',
   cristiano:'Cris@2024', zolder:'Zolder@2024', marco:'Marco@2024',
-  andre:'Andre@2024', frederico:'Frederico@2024', conf:'Conf@2024'
+  andre:'Andre@2024', frederico:'Frederico@2024'
 };
 let senhaEditandoId = null;
 
@@ -3537,11 +3633,16 @@ async function salvarNovaSenha() {
 
   btn.disabled = true; btn.textContent = '⏳ Salvando...';
   try {
-    // Atualiza no Supabase
-    await sbFetch('usuarios?id=eq.' + senhaEditandoId, 'PATCH', {
-      senha: nova,
-      atualizado_em: new Date().toISOString()
-    });
+    // Usuário migrado troca a senha no Supabase Auth. Contas legadas ainda
+    // usam temporariamente a coluna antiga até a migração individual.
+    if (senhaEditandoId === currentProfile && SB_ACCESS_TOKEN) {
+      await sbAuthUpdatePassword(nova);
+    } else {
+      await sbFetch('usuarios?id=eq.' + senhaEditandoId, 'PATCH', {
+        senha: nova,
+        atualizado_em: new Date().toISOString()
+      });
+    }
     // Atualiza local
     if (USUARIOS_DB && USUARIOS_DB[senhaEditandoId]) {
       USUARIOS_DB[senhaEditandoId].senha = nova;
@@ -5142,7 +5243,7 @@ function renderRecent() {
 // ══ PAINEL ══
 async function initPainel() {
   // Verifica se senhas padrão ainda estão ativas
-  const defaultPasswords = ['Maike@2024','Ivan@2024','Nivan@2024','Azzi@2024','Cris@2024','Zolder@2024','Marco@2024','Andre@2024','Conf@2024'];
+  const defaultPasswords = ['Maike@2024','Ivan@2024','Nivan@2024','Azzi@2024','Cris@2024','Zolder@2024','Marco@2024','Andre@2024'];
   const hasDefault = Object.values(USUARIOS).some(u => defaultPasswords.includes(u.senha));
   const secAlert = document.getElementById('secAlert');
   if (secAlert && hasDefault) secAlert.style.display = 'inline';
