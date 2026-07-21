@@ -3443,6 +3443,11 @@ async function doLogin() {
       await sbAuthLogin(user, pass);
       const perfilRpc = await sbFetch('rpc/cume_usuario_atual', 'POST', {});
       const perfil = Array.isArray(perfilRpc) ? perfilRpc[0] : perfilRpc;
+      if (perfil) {
+        perfil.id = perfil.id || perfil.usuario_id;
+        perfil.role = perfil.role || perfil.usuario_role;
+        if (perfil.ativo === undefined) perfil.ativo = perfil.usuario_ativo;
+      }
       if (!perfil || !perfil.id) throw new Error('Conta não vinculada a um perfil do CUME.');
       if (perfil.ativo === false) throw new Error('Usuário desativado. Entre em contato com a administração.');
 
